@@ -1,7 +1,11 @@
 import asyncio
 import random
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+
+from schemas import TriageProcessRequest, TriageProcessResponse
+from agent import run_triage, extract_response
+from tools import PATIENT_STORE
 
 app = FastAPI()
 
@@ -33,3 +37,31 @@ async def vitals_stream(websocket: WebSocket):
             await asyncio.sleep(2)
     except Exception:
         await websocket.close()
+
+
+@app.post("/triage/process", response_model=TriageProcessResponse)
+def triage_process(request: TriageProcessRequest):
+    """Process a paramedic voice transcript and return structured patient data with triage level."""
+    try:
+        state = run_triage(request.transcript)
+        messages = state.get("messages", [])
+        result = extract_response(messages)
+
+        patient_record = result["patient_record"]
+        patient_record.triage_level = result["triage_level"]
+
+        return TriageProcessResponse(
+            patient_record=patient_record,
+            triage_level=result["triage_level"],
+            triage_reasoning=result["triage_reasoning"],
+            missing_fields=result["missing_fields"],
+            validation_warnings=result["validation_warnings"],
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/patients")
+def list_patients():
+    """List all patient records stored by the triage agent."""
+    return {"patients": list(PATIENT_STORE.values())}
