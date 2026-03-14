@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import VoiceInput from "./components/VoiceInput";
 
 interface Vitals {
   heart_rate: number;
@@ -225,6 +226,8 @@ export default function Home() {
           WAITING FOR SIGNAL...
         </p>
       )}
+
+      <VoiceInput />
     </main>
   );
 }
