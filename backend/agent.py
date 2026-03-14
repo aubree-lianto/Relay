@@ -12,7 +12,7 @@ from langgraph.prebuilt import ToolNode
 
 from langchain_openai import ChatOpenAI
 
-from schemas import PatientRecord, Vitals
+from schemas import Demographics, PatientRecord, PhysicalExam, RelevantPastHistory, Vitals
 from tools import TRIAGE_TOOLS
 
 # --- State ---
@@ -35,18 +35,28 @@ llm = ChatOpenAI(
 
 # --- System prompt ---
 
-SYSTEM_PROMPT = """You are a paramedic triage assistant. You receive voice transcripts from paramedics en route to the hospital and produce structured patient records for the emergency department.
+SYSTEM_PROMPT = """You are a paramedic triage assistant for Ontario. You receive voice transcripts and produce patient records aligned with the Ontario Ambulance Call Report (ACR).
 
 Your workflow:
 1. Use parse_transcript(transcript) to extract structured patient data from the raw voice input.
 2. If vitals were extracted, use validate_vitals to check for abnormal values.
 3. Use check_missing_fields to identify gaps in the record.
-4. Use compute_triage_score to assign an ESI level (1-5).
-5. Use update_patient_record to store the final record (include triage_level in the record).
+4. Use compute_triage_score to assign CTAS (1-5) and infer Problem Code.
+5. Use update_patient_record to store the final record (include ctas and problem_code).
 
-Build the patient record as a JSON object with: age, sex, chief_complaint, symptoms (list), vitals (object with heart_rate, spo2, blood_pressure_systolic, blood_pressure_diastolic, respiratory_rate), estimated_arrival_minutes, triage_level, notes.
+Build the patient record as JSON with Ontario ACR fields:
+- demographics: {last_name, first_name, age, sex, weight_kg}
+- date_of_occurrence (YYYY/MM/DD), time_of_occurrence (HH:MM)
+- chief_complaint, incident_history
+- past_history: {cardiac, diabetes, respiratory, hypertension} (booleans)
+- medications, allergies (NKA/CNO or list)
+- treatment_prior_to_arrival
+- physical_exam: {general_appearance, skin_colour, skin_condition}
+- vitals: {pulse_rate, resp_rate, bp_systolic, bp_diastolic, spo2, temp}
+- ctas (1-5), problem_code (Ontario code e.g. 51, 60, 21)
+- estimated_arrival_minutes, pick_up_code (A-Z), remarks
 
-Pass tool arguments as JSON strings when required. After completing all steps, summarize the patient record and triage level for the hospital staff."""
+Pass tool arguments as JSON strings. After all steps, summarize the Ontario ACR patient record and CTAS for hospital staff."""
 
 
 # --- Nodes ---
@@ -93,11 +103,62 @@ def run_triage(transcript: str, config: RunnableConfig | None = None) -> dict:
     return agent.invoke({"messages": messages}, config=config or {})
 
 
+def _parse_result_to_patient_record(v: dict) -> PatientRecord:
+    """Convert flat TranscriptParseResult to nested PatientRecord."""
+    vitals = None
+    if any(k in v for k in ["pulse_rate", "heart_rate", "spo2", "resp_rate"]):
+        vitals = Vitals(
+            pulse_rate=v.get("pulse_rate") or v.get("heart_rate"),
+            resp_rate=v.get("resp_rate") or v.get("respiratory_rate"),
+            bp_systolic=v.get("bp_systolic") or v.get("blood_pressure_systolic"),
+            bp_diastolic=v.get("bp_diastolic") or v.get("blood_pressure_diastolic"),
+            spo2=v.get("spo2"),
+            temp=v.get("temp"),
+        )
+    demo = Demographics(
+        last_name=v.get("last_name"),
+        first_name=v.get("first_name"),
+        age=v.get("age"),
+        sex=v.get("sex"),
+        weight_kg=v.get("weight_kg"),
+    ) if any(v.get(k) for k in ["last_name", "first_name", "age", "sex", "weight_kg"]) else None
+    phys = PhysicalExam(
+        general_appearance=v.get("general_appearance"),
+        skin_colour=v.get("skin_colour"),
+        skin_condition=v.get("skin_condition"),
+    ) if any(v.get(k) for k in ["general_appearance", "skin_colour", "skin_condition"]) else None
+    past = None
+    if any(v.get(k) for k in ["past_history_cardiac", "past_history_diabetes", "past_history_respiratory", "past_history_hypertension"]):
+        past = RelevantPastHistory(
+            cardiac=v.get("past_history_cardiac"),
+            diabetes=v.get("past_history_diabetes"),
+            respiratory=v.get("past_history_respiratory"),
+            hypertension=v.get("past_history_hypertension"),
+        )
+    return PatientRecord(
+        demographics=demo,
+        date_of_occurrence=v.get("date_of_occurrence"),
+        time_of_occurrence=v.get("time_of_occurrence"),
+        chief_complaint=v.get("chief_complaint"),
+        incident_history=v.get("incident_history"),
+        past_history=past,
+        medications=v.get("medications"),
+        allergies=v.get("allergies"),
+        treatment_prior_to_arrival=v.get("treatment_prior_to_arrival"),
+        physical_exam=phys,
+        vitals=vitals,
+        estimated_arrival_minutes=v.get("estimated_arrival_minutes"),
+        pick_up_code=v.get("pick_up_code"),
+        remarks=v.get("remarks"),
+    )
+
+
 def extract_response(messages: list) -> dict:
     """Extract structured triage response from agent messages."""
     patient_record = PatientRecord()
-    triage_level = 3
-    triage_reasoning = ""
+    ctas = 3
+    ctas_reasoning = ""
+    problem_code = None
     missing_fields = []
     validation_warnings = []
 
@@ -105,43 +166,29 @@ def extract_response(messages: list) -> dict:
         if isinstance(msg, ToolMessage):
             try:
                 data = json.loads(msg.content)
-                if "triage_level" in data:
-                    triage_level = data["triage_level"]
-                    triage_reasoning = data.get("reasoning", "")
+                if "ctas" in data or "triage_level" in data:
+                    ctas = data.get("ctas", data.get("triage_level", 3))
+                    ctas_reasoning = data.get("reasoning", "")
+                    problem_code = data.get("problem_code")
                 elif "missing_required" in data:
                     missing_fields = data.get("missing_required", []) + data.get("missing_preferred", [])
                 elif "warnings" in data:
                     validation_warnings = data.get("warnings", [])
                 elif "status" in data and data.get("status") == "ok":
-                    pass  # update_patient_record success
-                elif "error" not in data and ("age" in data or "chief_complaint" in data or "symptoms" in data):
-                    # parse_transcript result (flat structure)
-                    v = data
-                    vitals = None
-                    if any(k in v for k in ["heart_rate", "spo2", "blood_pressure_systolic"]):
-                        vitals = Vitals(
-                            heart_rate=v.get("heart_rate"),
-                            spo2=v.get("spo2"),
-                            blood_pressure_systolic=v.get("blood_pressure_systolic"),
-                            blood_pressure_diastolic=v.get("blood_pressure_diastolic"),
-                            respiratory_rate=v.get("respiratory_rate"),
-                        )
-                    patient_record = PatientRecord(
-                        age=v.get("age"),
-                        sex=v.get("sex"),
-                        chief_complaint=v.get("chief_complaint"),
-                        symptoms=v.get("symptoms", []),
-                        vitals=vitals,
-                        estimated_arrival_minutes=v.get("estimated_arrival_minutes"),
-                        notes=v.get("notes"),
-                    )
+                    pass
+                elif "error" not in data and ("age" in data or "chief_complaint" in data or "last_name" in data):
+                    patient_record = _parse_result_to_patient_record(data)
             except (json.JSONDecodeError, KeyError, TypeError):
                 continue
 
+    patient_record.ctas = ctas
+    patient_record.problem_code = problem_code
+
     return {
         "patient_record": patient_record,
-        "triage_level": triage_level,
-        "triage_reasoning": triage_reasoning,
+        "ctas": ctas,
+        "ctas_reasoning": ctas_reasoning,
+        "problem_code": problem_code,
         "missing_fields": missing_fields,
         "validation_warnings": validation_warnings,
     }
