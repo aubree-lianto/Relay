@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import VoiceInput from "../components/VoiceInput";
 
 // --- Types ---
 
@@ -94,15 +95,9 @@ const TRIAGE_COLORS: Record<number, { bg: string; text: string; label: string }>
 // --- Component ---
 
 export default function TriagePage() {
-  const [transcript, setTranscript] = useState("");
-  const [recording, setRecording] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<TriageResponse | null>(null);
   const [form, setForm] = useState<PatientRecord>({});
-  const [usingMock, setUsingMock] = useState(false);
-  const recognitionRef = useRef<any>(null);
 
-  // Populate form when response arrives
   useEffect(() => {
     if (!response) return;
     setForm(response.patient_record);
@@ -110,60 +105,8 @@ export default function TriagePage() {
 
   const isMissing = (field: string) => response?.missing_fields.includes(field) ?? false;
 
-  function startRecording() {
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Speech recognition is not supported in this browser. Try Chrome.");
-      return;
-    }
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = "en-US";
-    recognitionRef.current = recognition;
-
-    recognition.onresult = (e: any) => {
-      const text = e.results[0][0].transcript;
-      setTranscript(text);
-      submitTranscript(text);
-    };
-    recognition.onerror = () => setRecording(false);
-    recognition.onend = () => setRecording(false);
-
-    recognition.start();
-    setRecording(true);
-  }
-
-  function stopRecording() {
-    recognitionRef.current?.stop();
-    setRecording(false);
-  }
-
-  async function submitTranscript(text: string) {
-    setLoading(true);
-    setUsingMock(false);
-    try {
-      const res = await fetch("http://localhost:8000/triage/process", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: text }),
-      });
-      if (!res.ok) throw new Error("Backend error");
-      const data: TriageResponse = await res.json();
-      setResponse(data);
-    } catch {
-      setResponse(MOCK_RESPONSE);
-      setUsingMock(true);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   function loadMock() {
-    setTranscript("Male patient, 65 years old, chest pain and shortness of breath, on ASA and nitrates, cardiac history, arriving in 8 minutes.");
     setResponse(MOCK_RESPONSE);
-    setUsingMock(true);
   }
 
   const triageColor = response ? TRIAGE_COLORS[response.triage_level] : null;
@@ -204,33 +147,14 @@ export default function TriagePage() {
           )}
 
           {/* Voice input */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 flex flex-col gap-3">
-            <div className="text-xs text-zinc-400 uppercase tracking-widest">Voice Input</div>
-            <button
-              onClick={recording ? stopRecording : startRecording}
-              disabled={loading}
-              className={`w-full py-3 rounded-lg font-bold text-sm uppercase tracking-widest transition-all ${
-                recording
-                  ? "bg-red-600 text-white animate-pulse"
-                  : "bg-zinc-800 text-white hover:bg-zinc-700 border border-zinc-600"
-              }`}
-            >
-              {recording ? "● Recording..." : loading ? "Processing..." : "● Record"}
-            </button>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
+            <VoiceInput onResult={setResponse} />
             <button
               onClick={loadMock}
-              className="w-full py-2 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 transition-colors"
+              className="w-full mt-3 py-2 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 transition-colors"
             >
               Load Mock Data
             </button>
-            {transcript && (
-              <div className="text-xs text-zinc-300 bg-zinc-800 rounded p-3 leading-relaxed">
-                {transcript}
-              </div>
-            )}
-            {usingMock && (
-              <div className="text-xs text-amber-400 text-center">Using mock data — backend offline</div>
-            )}
           </div>
 
           {/* Warnings */}
