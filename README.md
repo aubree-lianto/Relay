@@ -9,13 +9,11 @@ During emergency transport, paramedics often need to communicate critical patien
 The system captures voice input from a paramedic, converts it into structured medical information using an LLM, and updates a live hospital dashboard.
 
 ## Architecture
-
+```
 Paramedic Voice
       │
       ▼
 Amazon Alexa Skill
-      │
-      ├──► Voice playback via ElevenLabs + Voice Monkey  
       │
       ▼
 LLM Triage Parser (OpenAI / OpenRouter)
@@ -27,6 +25,7 @@ FastAPI Backend ◄──── WebSocket Vitals Stream (simulated / Apple Watch
       │
       ▼
 Next.js Hospital Dashboard
+```
 
 ## Features
 
