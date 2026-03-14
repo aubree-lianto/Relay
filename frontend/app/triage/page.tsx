@@ -162,6 +162,86 @@ export default function TriagePage() {
   const committedRef = useRef("");
   const latestTextRef = useRef("");
 
+  // ── Live EKG state ──────────────────────────────────────────────────────
+  const [liveHR, setLiveHR] = useState<number | null>(null);
+  const waveCanvasRef = useRef<HTMLCanvasElement>(null);
+  const dotCanvasRef = useRef<HTMLCanvasElement>(null);
+  const liveHRRef = useRef(75);
+
+  const EKG_W = 260;
+  const EKG_H = 80;
+  const EKG_BASELINE = 45;
+  const EKG_SPEED = 2;
+  const EKG_ERASER = 20;
+
+  const EKG_BEAT: [number, number][] = [
+    [0.00,  0.00], [0.05, -0.06], [0.10,  0.03], [0.15,  0.00],
+    [0.20,  0.10], [0.25, -1.00], [0.30,  0.45], [0.38, -0.10],
+    [0.48, -0.20], [0.58, -0.04], [0.65,  0.00], [1.00,  0.00],
+  ];
+
+  useEffect(() => {
+    const ws = new WebSocket("ws://localhost:8000/ws/vitals");
+    ws.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      liveHRRef.current = data.pulse_rate ?? 75;
+      setLiveHR(data.pulse_rate ?? null);
+    };
+    return () => ws.close();
+  }, []);
+
+  useEffect(() => {
+    const wc = waveCanvasRef.current;
+    const dc = dotCanvasRef.current;
+    if (!wc || !dc) return;
+    const wctx = wc.getContext("2d")!;
+    const dctx = dc.getContext("2d")!;
+
+    // grid
+    const grid = document.createElement("canvas");
+    grid.width = EKG_W; grid.height = EKG_H;
+    const g = grid.getContext("2d")!;
+    g.fillStyle = "#0f172a";
+    g.fillRect(0, 0, EKG_W, EKG_H);
+    g.strokeStyle = "#1e293b"; g.lineWidth = 0.5;
+    for (let x = 0; x <= EKG_W; x += 10) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, EKG_H); g.stroke(); }
+    for (let y = 0; y <= EKG_H; y += 10) { g.beginPath(); g.moveTo(0, y); g.lineTo(EKG_W, y); g.stroke(); }
+
+    wctx.drawImage(grid, 0, 0);
+
+    let cx = 0, bp = 0, py = EKG_BASELINE, anim: number;
+    const draw = () => {
+      const hr = liveHRRef.current;
+      const ppb = (EKG_SPEED * 60) / (hr / 60);
+      const amp = 30;
+      const es = (cx + EKG_SPEED + 2) % EKG_W;
+      const ee = es + EKG_ERASER;
+      if (ee <= EKG_W) { wctx.drawImage(grid, es, 0, EKG_ERASER, EKG_H, es, 0, EKG_ERASER, EKG_H); }
+      else { const p1 = EKG_W - es; wctx.drawImage(grid, es, 0, p1, EKG_H, es, 0, p1, EKG_H); wctx.drawImage(grid, 0, 0, ee - EKG_W, EKG_H, 0, 0, ee - EKG_W, EKG_H); }
+
+      const t = Math.max(0, Math.min(1, bp / ppb));
+      let cy = EKG_BASELINE;
+      for (let i = 0; i < EKG_BEAT.length - 1; i++) {
+        const [t0, d0] = EKG_BEAT[i], [t1, d1] = EKG_BEAT[i + 1];
+        if (t >= t0 && t <= t1) { const f = (t - t0) / (t1 - t0); cy = EKG_BASELINE + (d0 + (d1 - d0) * f) * amp; break; }
+      }
+      const nx = (cx + EKG_SPEED) % EKG_W;
+
+      wctx.shadowBlur = 0; wctx.strokeStyle = "#38bdf8"; wctx.lineWidth = 1.5; wctx.lineJoin = "round"; wctx.lineCap = "round";
+      if (nx < cx) { wctx.beginPath(); wctx.moveTo(cx, py); wctx.lineTo(EKG_W, cy); wctx.stroke(); wctx.beginPath(); wctx.moveTo(0, cy); wctx.lineTo(nx, cy); wctx.stroke(); }
+      else { wctx.beginPath(); wctx.moveTo(cx, py); wctx.lineTo(nx, cy); wctx.stroke(); }
+
+      dctx.clearRect(0, 0, EKG_W, EKG_H);
+      dctx.shadowBlur = 8; dctx.shadowColor = "#bae6fd"; dctx.fillStyle = "#fff";
+      dctx.beginPath(); dctx.arc(nx, cy, 3, 0, Math.PI * 2); dctx.fill(); dctx.shadowBlur = 0;
+
+      py = cy; cx = nx; bp = (bp + EKG_SPEED) % ppb;
+      anim = requestAnimationFrame(draw);
+    };
+    anim = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(anim);
+  }, []);
+
   useEffect(() => {
     if (result) setForm(result.patient_record);
   }, [result]);
@@ -246,58 +326,77 @@ export default function TriagePage() {
       <div className="flex-1 flex overflow-hidden">
 
         {/* ── LEFT PANEL ── */}
-        <aside className="w-80 border-r border-slate-800/60 bg-slate-900/40 flex flex-col p-4 gap-3 overflow-y-auto">
+        <aside className="w-96 border-r border-slate-800/60 bg-slate-900/40 flex flex-col p-5 gap-3 overflow-y-auto">
 
           {/* Triage badge */}
           {triage && result ? (
-            <div className={`rounded-2xl p-4 ${triage.bg} ${triage.glow} transition-all`}>
-              <div className={`text-xs font-medium uppercase tracking-[0.2em] opacity-80 ${triage.text}`}>
+            <div className={`rounded-2xl p-5 ${triage.bg} ${triage.glow} transition-all`}>
+              <div className={`text-sm font-medium uppercase tracking-[0.2em] opacity-80 ${triage.text}`}>
                 ESI Level
               </div>
               <div className="flex items-baseline gap-3">
-                <div className={`text-5xl font-black leading-none mt-1 ${triage.text}`}>
+                <div className={`text-6xl font-black leading-none mt-1 ${triage.text}`}>
                   {result.triage_level}
                 </div>
-                <div className={`text-sm font-semibold tracking-wider ${triage.text}`}>
+                <div className={`text-base font-semibold tracking-wider ${triage.text}`}>
                   {triage.label}
                 </div>
               </div>
             </div>
           ) : (
-            <div className="rounded-2xl p-4 border border-slate-800 bg-slate-900/60">
-              <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-600">
+            <div className="rounded-2xl p-5 border border-slate-800 bg-slate-900/60">
+              <div className="text-sm font-medium uppercase tracking-[0.2em] text-slate-600">
                 ESI Level
               </div>
               <div className="flex items-baseline gap-3">
-                <div className="text-5xl font-black leading-none mt-1 text-slate-800">—</div>
-                <div className="text-sm font-medium text-slate-700 tracking-wider">AWAITING DATA</div>
+                <div className="text-6xl font-black leading-none mt-1 text-slate-800">—</div>
+                <div className="text-base font-medium text-slate-700 tracking-wider">AWAITING DATA</div>
               </div>
             </div>
           )}
 
           {/* ETA */}
-          <div className="rounded-2xl p-4 border border-slate-800 bg-slate-900/60">
-            <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500 mb-1">
+          <div className="rounded-2xl p-5 border border-slate-800 bg-slate-900/60">
+            <div className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500 mb-1">
               ETA
             </div>
             {form.estimated_arrival_minutes != null ? (
               <div className="flex items-baseline gap-1">
-                <span className="text-3xl font-black text-white font-mono tabular-nums">
+                <span className="text-4xl font-black text-white font-mono tabular-nums">
                   {form.estimated_arrival_minutes}
                 </span>
-                <span className="text-sm font-medium text-slate-500">min</span>
+                <span className="text-base font-medium text-slate-500">min</span>
               </div>
             ) : (
-              <div className="text-3xl font-black text-slate-800">—</div>
+              <div className="text-4xl font-black text-slate-800">—</div>
             )}
           </div>
 
-          {/* Vitals strip — grows to fill remaining space */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 flex-1">
-            <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500 mb-2">
+          {/* Live EKG strip */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">
+                Live EKG
+              </div>
+              {liveHR != null && (
+                <div className="flex items-baseline gap-1">
+                  <span className="text-xl font-bold font-mono tabular-nums text-sky-300">{liveHR}</span>
+                  <span className="text-xs text-slate-500">bpm</span>
+                </div>
+              )}
+            </div>
+            <div className="relative rounded-lg overflow-hidden" style={{ height: 80 }}>
+              <canvas ref={waveCanvasRef} width={260} height={80} className="absolute inset-0 w-full h-full block" />
+              <canvas ref={dotCanvasRef} width={260} height={80} className="absolute inset-0 w-full h-full block" />
+            </div>
+          </div>
+
+          {/* Vitals strip */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 flex-1">
+            <div className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500 mb-3">
               Vitals
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <VitalRow
                 label="HR"
                 value={form.vitals?.heart_rate}
@@ -343,58 +442,12 @@ export default function TriagePage() {
             </div>
           </div>
 
-          {/* Warnings */}
-          {result && result.validation_warnings.length > 0 && (
-            <div className="rounded-2xl border border-red-500/20 bg-red-950/20 p-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-red-400 mb-2">
-                Warnings
-              </div>
-              <div className="space-y-1.5">
-                {result.validation_warnings.map((w, i) => (
-                  <div key={i} className="flex gap-2 text-sm text-red-300/90 leading-snug">
-                    <span className="text-red-500 shrink-0 mt-0.5">&#9679;</span>
-                    <span>{w}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Missing fields */}
-          {result && result.missing_fields.length > 0 && (
-            <div className="rounded-2xl border border-amber-500/20 bg-amber-950/20 p-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-400 mb-2">
-                Missing Information
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {result.missing_fields.map((f) => (
-                  <span
-                    key={f}
-                    className="text-sm font-medium px-2.5 py-1 rounded-lg border border-amber-600/30 text-amber-300 bg-amber-900/20"
-                  >
-                    {f.replace(/_/g, " ")}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-        </aside>
-
-        {/* ── MAIN AREA ── */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-
-          {/* Voice input area */}
-          <div
-            className={`border-b border-slate-800/60 transition-all ${
-              !result ? "flex-1 flex items-center justify-center p-8" : "p-4"
-            }`}
-          >
-            <div className={`rounded-2xl border border-slate-800 bg-slate-900/40 flex items-center gap-5 w-full ${
-              status === "idle" && !result ? "flex-col py-10 px-16 w-auto" : "px-6 py-4"
-            }`}>
+          {/* Voice input — sidebar mic */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+            <div className="flex flex-col items-center gap-3">
               {/* Status badge */}
               <span
-                className={`text-xs font-semibold tracking-[0.15em] uppercase px-3 py-1 rounded-full border transition-colors ${
+                className={`text-sm font-semibold tracking-[0.15em] uppercase px-4 py-1.5 rounded-full border transition-colors ${
                   status === "listening"
                     ? "border-red-500/60 text-red-400 bg-red-950/30 animate-pulse"
                     : status === "processing"
@@ -416,20 +469,18 @@ export default function TriagePage() {
               {/* Mic button */}
               <button
                 onClick={isListening ? stopAndSubmit : startListening}
-                className={`rounded-full border-2 flex items-center justify-center transition-all duration-300 cursor-pointer ${
-                  status === "idle" && !result ? "w-24 h-24" : "w-14 h-14"
-                } ${
+                className={`rounded-full border-2 flex items-center justify-center transition-all duration-300 cursor-pointer w-16 h-16 ${
                   isListening
                     ? "border-red-500 bg-red-500/10 text-red-400 animate-pulse shadow-[0_0_50px_rgba(239,68,68,0.3)]"
                     : "border-slate-600 bg-slate-800/50 text-slate-400 hover:border-sky-400 hover:text-sky-400 hover:bg-sky-500/5 hover:shadow-[0_0_40px_rgba(56,189,248,0.15)]"
                 }`}
               >
                 {isListening ? (
-                  <svg width={status === "idle" && !result ? "30" : "20"} height={status === "idle" && !result ? "30" : "20"} viewBox="0 0 24 24" fill="currentColor">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
                     <rect x="5" y="5" width="14" height="14" rx="2" />
                   </svg>
                 ) : (
-                  <svg width={status === "idle" && !result ? "34" : "22"} height={status === "idle" && !result ? "34" : "22"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="9" y="2" width="6" height="12" rx="3" />
                     <path d="M5 10a7 7 0 0 0 14 0" />
                     <line x1="12" y1="19" x2="12" y2="22" />
@@ -438,7 +489,7 @@ export default function TriagePage() {
                 )}
               </button>
 
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-slate-500 text-center">
                 {isListening
                   ? "Tap to stop & process"
                   : status === "idle" && !result
@@ -450,32 +501,88 @@ export default function TriagePage() {
               {status === "idle" && !result && (
                 <button
                   onClick={() => { setResult(MOCK_RESPONSE); setStatus("done"); }}
-                  className="text-sm font-medium text-slate-600 border border-slate-800 px-5 py-2 rounded-full hover:text-slate-300 hover:border-slate-600 hover:bg-slate-800/30 transition-all cursor-pointer"
+                  className="text-sm font-medium text-slate-600 border border-slate-800 px-4 py-2 rounded-full hover:text-slate-300 hover:border-slate-600 hover:bg-slate-800/30 transition-all cursor-pointer"
                 >
-                  Load Demo Data
+                  Load Demo
                 </button>
               )}
             </div>
 
-            {/* Live transcript — outside the box, beside it */}
-            {(isListening || (liveTranscript && status !== "done")) && (
-              <div className="ml-4 flex-1 max-w-xl border border-slate-800 rounded-2xl bg-slate-900/40 p-4">
-                <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500 mb-2">
-                  {isListening ? "Listening..." : "Transcript"}
-                </div>
-                <p className="text-base text-slate-300 leading-relaxed">
-                  {liveTranscript || <span className="text-slate-600 italic">Speak now...</span>}
-                </p>
-              </div>
-            )}
-
-            {/* Processing */}
-            {status === "processing" && (
-              <div className="ml-4 text-amber-400 text-sm font-medium tracking-[0.15em] animate-pulse">
-                ANALYZING TRANSCRIPT...
-              </div>
-            )}
           </div>
+        </aside>
+
+        {/* ── MAIN AREA ── */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+
+          {/* Warnings & Missing info bar */}
+          {result && (result.validation_warnings.length > 0 || result.missing_fields.length > 0) && (
+            <div className="border-b border-slate-800/60 p-4 flex items-stretch gap-4">
+              {/* Warnings */}
+              {result.validation_warnings.length > 0 && (
+                <div className="flex-1 rounded-2xl border border-red-500/20 bg-red-950/20 p-5 flex flex-col justify-center">
+                  <div className="text-sm font-semibold uppercase tracking-[0.2em] text-red-400 mb-3">
+                    Warnings
+                  </div>
+                  <div className="space-y-2">
+                    {result.validation_warnings.map((w, i) => (
+                      <div key={i} className="flex gap-2 text-base text-red-300/90 leading-snug">
+                        <span className="text-red-500 shrink-0 mt-0.5">&#9679;</span>
+                        <span>{w}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Missing fields */}
+              {result.missing_fields.length > 0 && (
+                <div className="flex-1 rounded-2xl border border-amber-500/20 bg-amber-950/20 p-5 flex flex-col justify-center">
+                  <div className="text-sm font-semibold uppercase tracking-[0.2em] text-amber-400 mb-3">
+                    Missing Information
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {result.missing_fields.map((f) => (
+                      <span
+                        key={f}
+                        className="text-base font-medium px-3 py-1.5 rounded-lg border border-amber-600/30 text-amber-300 bg-amber-900/20"
+                      >
+                        {f.replace(/_/g, " ")}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Empty state / Live transcript */}
+          {!result && (
+            <div className="flex-1 flex items-center justify-center p-8">
+              {isListening || (liveTranscript && status !== "done") ? (
+                <div className="w-full max-w-2xl rounded-2xl border border-slate-800 bg-slate-900/40 p-8">
+                  <div className="text-sm font-semibold uppercase tracking-[0.2em] text-red-400 mb-4 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                    {isListening ? "Listening..." : "Transcript"}
+                  </div>
+                  <p className="text-xl text-slate-200 leading-relaxed">
+                    {liveTranscript || <span className="text-slate-600 italic">Speak now...</span>}
+                  </p>
+                </div>
+              ) : status === "processing" ? (
+                <div className="text-center">
+                  <div className="text-amber-400 text-lg font-medium tracking-[0.15em] animate-pulse">
+                    ANALYZING TRANSCRIPT...
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center">
+                  <div className="text-slate-700 text-lg font-medium tracking-wide">
+                    Start a voice triage from the sidebar
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Extracted data — dashboard grid */}
           {result && !editing && (
@@ -483,7 +590,7 @@ export default function TriagePage() {
 
               {/* Row 0: Patient header — spans full width */}
               <div className="col-span-3 flex items-center gap-4 px-1">
-                <h2 className="flex-1 text-xl font-bold text-white tracking-tight">
+                <h2 className="flex-1 text-2xl font-bold text-white tracking-tight">
                   {form.age ? `${form.age}${form.sex ? form.sex[0].toUpperCase() : ""}` : "Unknown Patient"}
                   {form.chief_complaint && (
                     <span className="text-slate-400 font-normal">
@@ -492,7 +599,7 @@ export default function TriagePage() {
                   )}
                 </h2>
                 {triage && (
-                  <span className={`px-3.5 py-1 rounded-full text-sm font-bold ${triage.bg} ${triage.text}`}>
+                  <span className={`px-4 py-1.5 rounded-full text-base font-bold ${triage.bg} ${triage.text}`}>
                     ESI {result.triage_level}
                   </span>
                 )}
@@ -502,7 +609,7 @@ export default function TriagePage() {
               <div className="col-span-2 min-h-0">
                 <StretchCard>
                   <CardLabel>Triage Reasoning</CardLabel>
-                  <p className="text-base text-slate-300 leading-relaxed">
+                  <p className="text-lg text-slate-300 leading-relaxed">
                     {result.triage_reasoning}
                   </p>
                 </StretchCard>
@@ -511,7 +618,7 @@ export default function TriagePage() {
               <div className="min-h-0">
                 <StretchCard>
                   <CardLabel>Demographics</CardLabel>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-4">
                     <DataRow label="First Name" value={form.first_name} missing={result.missing_fields.includes("first_name")} />
                     <DataRow label="Last Name" value={form.last_name} missing={result.missing_fields.includes("last_name")} />
                     <DataRow label="Age" value={form.age != null ? `${form.age}` : undefined} />
@@ -526,7 +633,7 @@ export default function TriagePage() {
               <div className="col-span-2 min-h-0">
                 <StretchCard>
                   <CardLabel>Clinical Information</CardLabel>
-                  <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+                  <div className="grid grid-cols-2 gap-x-10 gap-y-4">
                     <DataRow label="Chief Complaint" value={form.chief_complaint} />
                     <DataRow label="Symptoms" value={form.symptoms?.join(", ")} />
                     <DataRow label="Allergies" value={form.allergies} />
@@ -542,7 +649,7 @@ export default function TriagePage() {
                   <div className="flex flex-wrap gap-1.5 mb-4">
                     {form.medications && form.medications.length > 0 ? (
                       form.medications.map((m) => (
-                        <span key={m} className="text-sm font-medium px-2.5 py-1 rounded-lg bg-sky-500/10 text-sky-300 border border-sky-500/20">
+                        <span key={m} className="text-base font-medium px-3 py-1.5 rounded-lg bg-sky-500/10 text-sky-300 border border-sky-500/20">
                           {m}
                         </span>
                       ))
@@ -554,7 +661,7 @@ export default function TriagePage() {
                   <div className="flex flex-wrap gap-1.5">
                     {form.relevant_past_history && form.relevant_past_history.length > 0 ? (
                       form.relevant_past_history.map((h) => (
-                        <span key={h} className="text-sm font-medium px-2.5 py-1 rounded-lg bg-violet-500/10 text-violet-300 border border-violet-500/20">
+                        <span key={h} className="text-base font-medium px-3 py-1.5 rounded-lg bg-violet-500/10 text-violet-300 border border-violet-500/20">
                           {h}
                         </span>
                       ))
@@ -569,7 +676,7 @@ export default function TriagePage() {
               <div className="col-span-3 min-h-0">
                 <StretchCard>
                   <CardLabel>Notes</CardLabel>
-                  <p className="text-base text-slate-400 leading-relaxed italic">
+                  <p className="text-lg text-slate-400 leading-relaxed italic">
                     {form.notes || <span className="text-slate-600">—</span>}
                   </p>
                 </StretchCard>
@@ -600,7 +707,7 @@ export default function TriagePage() {
                     <EditField label="Chief Complaint" value={form.chief_complaint ?? ""} onChange={(v) => setForm((f) => ({ ...f, chief_complaint: v }))} />
                     <EditField label="Allergies" value={form.allergies ?? ""} onChange={(v) => setForm((f) => ({ ...f, allergies: v }))} />
                     <div>
-                      <label className="block text-xs font-medium uppercase tracking-[0.15em] text-slate-500 mb-1.5">
+                      <label className="block text-sm font-medium uppercase tracking-[0.15em] text-slate-500 mb-1.5">
                         Notes
                       </label>
                       <textarea
@@ -632,10 +739,10 @@ export default function TriagePage() {
 
       {/* ── BOTTOM BAR ── */}
       {result && (
-        <div className="border-t border-slate-800/60 px-6 py-3.5 flex items-center justify-between bg-slate-900/60">
+        <div className="border-t border-slate-800/60 px-8 py-4 flex items-center justify-between bg-slate-900/60">
           <button
             onClick={() => setEditing(!editing)}
-            className="text-sm font-semibold uppercase tracking-[0.1em] px-5 py-2.5 rounded-xl border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 hover:bg-slate-800/50 transition-all cursor-pointer"
+            className="text-base font-semibold uppercase tracking-[0.1em] px-6 py-3 rounded-xl border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 hover:bg-slate-800/50 transition-all cursor-pointer"
           >
             {editing ? "View Summary" : "Edit Details"}
           </button>
@@ -649,11 +756,11 @@ export default function TriagePage() {
                 setStatus("idle");
                 setEditing(false);
               }}
-              className="text-sm font-semibold uppercase tracking-[0.1em] px-5 py-2.5 rounded-xl border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 hover:bg-slate-800/50 transition-all cursor-pointer"
+              className="text-base font-semibold uppercase tracking-[0.1em] px-6 py-3 rounded-xl border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 hover:bg-slate-800/50 transition-all cursor-pointer"
             >
               New Triage
             </button>
-            <button className="text-sm font-semibold uppercase tracking-[0.1em] px-6 py-2.5 rounded-xl bg-sky-500 text-white hover:bg-sky-400 transition-colors shadow-lg shadow-sky-500/20 cursor-pointer">
+            <button className="text-base font-semibold uppercase tracking-[0.1em] px-8 py-3 rounded-xl bg-sky-500 text-white hover:bg-sky-400 transition-colors shadow-lg shadow-sky-500/20 cursor-pointer">
               Submit to Hospital
             </button>
           </div>
@@ -677,16 +784,16 @@ function VitalRow({
   warn?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between py-1">
-      <span className={`text-sm font-medium uppercase tracking-wider ${warn ? "text-red-400" : "text-slate-500"}`}>
+    <div className="flex items-center justify-between py-1.5">
+      <span className={`text-base font-medium uppercase tracking-wider ${warn ? "text-red-400" : "text-slate-500"}`}>
         {label}
       </span>
       <div className="flex items-baseline gap-1.5">
-        <span className={`text-xl font-bold font-mono tabular-nums ${warn ? "text-red-300" : "text-white"}`}>
+        <span className={`text-2xl font-bold font-mono tabular-nums ${warn ? "text-red-300" : "text-white"}`}>
           {value != null ? value : <span className="text-slate-700">—</span>}
         </span>
         {value != null && (
-          <span className={`text-xs font-medium ${warn ? "text-red-400/60" : "text-slate-600"}`}>
+          <span className={`text-sm font-medium ${warn ? "text-red-400/60" : "text-slate-600"}`}>
             {unit}
           </span>
         )}
@@ -697,7 +804,7 @@ function VitalRow({
 
 function Card({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5">
+    <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6">
       {children}
     </div>
   );
@@ -705,7 +812,7 @@ function Card({ children }: { children: React.ReactNode }) {
 
 function StretchCard({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 h-full">
+    <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 h-full">
       {children}
     </div>
   );
@@ -713,7 +820,7 @@ function StretchCard({ children }: { children: React.ReactNode }) {
 
 function CardLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 mb-3">
+    <div className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500 mb-3">
       {children}
     </div>
   );
@@ -732,13 +839,13 @@ function DataRow({
 }) {
   return (
     <div className={span2 ? "col-span-2" : ""}>
-      <div className={`text-xs font-medium uppercase tracking-[0.15em] mb-1 ${missing ? "text-amber-400" : "text-slate-500"}`}>
+      <div className={`text-sm font-medium uppercase tracking-[0.15em] mb-1.5 ${missing ? "text-amber-400" : "text-slate-500"}`}>
         {label}{missing && " *"}
       </div>
       {value ? (
-        <div className="text-base text-slate-200 leading-relaxed">{value}</div>
+        <div className="text-lg text-slate-200 leading-relaxed">{value}</div>
       ) : (
-        <div className="text-base text-slate-600 italic">—</div>
+        <div className="text-lg text-slate-600 italic">—</div>
       )}
     </div>
   );
@@ -757,7 +864,7 @@ function EditField({
 }) {
   return (
     <div>
-      <label className={`block text-xs font-medium uppercase tracking-[0.15em] mb-1.5 ${missing ? "text-amber-400" : "text-slate-500"}`}>
+      <label className={`block text-sm font-medium uppercase tracking-[0.15em] mb-1.5 ${missing ? "text-amber-400" : "text-slate-500"}`}>
         {label}
         {missing && " *"}
       </label>
