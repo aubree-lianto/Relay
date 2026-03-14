@@ -10,13 +10,23 @@ The system captures voice input from a paramedic, converts it into structured me
 
 ## Architecture
 
-Paramedic Voice Input  
-→ Amazon Alexa skill  
-→ Voice playback via ElevenLabs + Voice Monkey  
-→ Speech parsed with LLM (OpenAI API or OpenRouter)  
-→ Structured triage form generated  
-→ FastAPI backend processes request  
-→ Next.js frontend updates hospital dashboard
+Paramedic Voice
+      │
+      ▼
+Amazon Alexa Skill
+      │
+      ├──► Voice playback via ElevenLabs + Voice Monkey  
+      │
+      ▼
+LLM Triage Parser (OpenAI / OpenRouter)
+      │
+      ├──► Structured Patient Record
+      │
+      ▼
+FastAPI Backend ◄──── WebSocket Vitals Stream (simulated / Apple Watch)
+      │
+      ▼
+Next.js Hospital Dashboard
 
 ## Features
 
