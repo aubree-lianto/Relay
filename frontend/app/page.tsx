@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import VoiceInput from "./components/VoiceInput";
+
+const AmbulanceMap = dynamic(() => import("./components/AmbulanceMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full max-w-4xl mt-6 h-[420px] border border-green-900 rounded-lg flex items-center justify-center text-green-800 text-xs tracking-widest animate-pulse font-mono">
+      LOADING MAP…
+    </div>
+  ),
+});
 
 interface Vitals {
   heart_rate: number;
@@ -228,6 +238,7 @@ export default function Home() {
       )}
 
       <VoiceInput />
+      <AmbulanceMap />
     </main>
   );
 }
