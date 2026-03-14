@@ -14,11 +14,12 @@ const AmbulanceMap = dynamic(() => import("./components/AmbulanceMap"), {
 });
 
 interface Vitals {
-  heart_rate: number;
+  pulse_rate: number;
   spo2: number;
-  blood_pressure_systolic: number;
-  blood_pressure_diastolic: number;
-  respiratory_rate: number;
+  bp_systolic: number;
+  bp_diastolic: number;
+  resp_rate: number;
+  temp: number;
 }
 
 const WIDTH = 800;
@@ -66,11 +67,12 @@ export default function Home() {
   const waveCanvasRef = useRef<HTMLCanvasElement>(null);
   const dotCanvasRef = useRef<HTMLCanvasElement>(null);
   const vitalsRef = useRef<Vitals>({
-    heart_rate: 75,
+    pulse_rate: 75,
     spo2: 98,
-    blood_pressure_systolic: 120,
-    blood_pressure_diastolic: 80,
-    respiratory_rate: 16,
+    bp_systolic: 120,
+    bp_diastolic: 80,
+    resp_rate: 16,
+    temp: 37.0,
   });
 
   useEffect(() => {
@@ -125,9 +127,9 @@ export default function Home() {
     let animId: number;
 
     const draw = () => {
-      const { heart_rate, blood_pressure_systolic } = vitalsRef.current;
-      const pxPerBeat = (SPEED * 60) / (heart_rate / 60);
-      const amplitude = bpToAmplitude(blood_pressure_systolic);
+      const { pulse_rate, bp_systolic } = vitalsRef.current;
+      const pxPerBeat = (SPEED * 60) / (pulse_rate / 60);
+      const amplitude = bpToAmplitude(bp_systolic);
 
       // Erase band ahead on wave canvas
       const eraseStart = (cursorX + SPEED + 2) % WIDTH;
@@ -212,7 +214,7 @@ export default function Home() {
         {vitals && (
           <div className="absolute top-3 right-4 text-right z-10">
             <div className="text-green-300 text-5xl font-bold leading-none">
-              {vitals.heart_rate}
+              {vitals.pulse_rate}
             </div>
             <div className="text-green-600 text-xs tracking-widest">BPM</div>
           </div>
@@ -224,12 +226,12 @@ export default function Home() {
           <VitalBox label="SpO₂" value={`${vitals.spo2}%`} color="text-cyan-400" borderColor="border-cyan-800" />
           <VitalBox
             label="BP"
-            value={`${vitals.blood_pressure_systolic}/${vitals.blood_pressure_diastolic}`}
+            value={`${vitals.bp_systolic}/${vitals.bp_diastolic}`}
             color="text-yellow-400"
             borderColor="border-yellow-800"
           />
-          <VitalBox label="RESP" value={`${vitals.respiratory_rate} br/m`} color="text-blue-400" borderColor="border-blue-800" />
-          <VitalBox label="HR" value={`${vitals.heart_rate} bpm`} color="text-green-400" borderColor="border-green-800" />
+          <VitalBox label="RESP" value={`${vitals.resp_rate} br/m`} color="text-blue-400" borderColor="border-blue-800" />
+          <VitalBox label="HR" value={`${vitals.pulse_rate} bpm`} color="text-green-400" borderColor="border-green-800" />
         </div>
       ) : (
         <p className="mt-6 text-green-800 animate-pulse tracking-widest text-sm">
