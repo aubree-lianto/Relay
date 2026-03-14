@@ -21,12 +21,14 @@ app.add_middleware(
 
 
 def generate_vitals():
+    """Generate vitals matching Ontario ACR Clinical Treatment table columns."""
     return {
-        "heart_rate": random.randint(60, 110),
+        "pulse_rate": random.randint(60, 110),
+        "resp_rate": random.randint(12, 25),
+        "bp_systolic": random.randint(110, 160),
+        "bp_diastolic": random.randint(70, 100),
         "spo2": round(random.uniform(92, 100), 1),
-        "blood_pressure_systolic": random.randint(110, 160),
-        "blood_pressure_diastolic": random.randint(70, 100),
-        "respiratory_rate": random.randint(12, 25),
+        "temp": round(random.uniform(36.5, 37.5), 1),
     }
 
 
@@ -51,12 +53,11 @@ def triage_process(request: TriageProcessRequest):
         result = extract_response(messages)
 
         patient_record = result["patient_record"]
-        patient_record.triage_level = result["triage_level"]
-
         return TriageProcessResponse(
             patient_record=patient_record,
-            triage_level=result["triage_level"],
-            triage_reasoning=result["triage_reasoning"],
+            ctas=result["ctas"],
+            ctas_reasoning=result["ctas_reasoning"],
+            problem_code=result.get("problem_code"),
             missing_fields=result["missing_fields"],
             validation_warnings=result["validation_warnings"],
         )
