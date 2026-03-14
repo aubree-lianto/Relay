@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import VoiceInput from "./components/VoiceInput";
 
 const AmbulanceMap = dynamic(() => import("./components/AmbulanceMap"), {
   ssr: false,
@@ -236,6 +237,7 @@ export default function Home() {
         </p>
       )}
 
+      <VoiceInput />
       <AmbulanceMap />
     </main>
   );
