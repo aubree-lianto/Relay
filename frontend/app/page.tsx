@@ -215,18 +215,14 @@ export default function Home() {
         )}
       </div>
 
-      {vitals ? (
-        <div className="w-full max-w-4xl grid grid-cols-4 gap-3 mt-4">
-          <VitalBox label="SpO₂" value={`${vitals.spo2}%`} color="text-cyan-400" />
-          <VitalBox label="BP" value={`${vitals.bp_systolic}/${vitals.bp_diastolic}`} color="text-amber-400" />
-          <VitalBox label="RESP" value={`${vitals.resp_rate} br/m`} color="text-sky-400" />
-          <VitalBox label="HR" value={`${vitals.pulse_rate} bpm`} color="text-emerald-400" />
-        </div>
-      ) : (
-        <p className="mt-6 text-slate-600 animate-pulse tracking-widest text-sm">
-          WAITING FOR SIGNAL...
-        </p>
-      )}
+      {/* Vital boxes */}
+      <div className="w-full max-w-4xl grid grid-cols-5 gap-3 mt-4">
+        <VitalBox label="Heart Rate" value={vitals ? `${vitals.pulse_rate}` : "—"} unit="bpm" color="text-emerald-400" />
+        <VitalBox label="SpO₂" value={vitals ? `${vitals.spo2}` : "—"} unit="%" color="text-cyan-400" />
+        <VitalBox label="Blood Pressure" value={vitals ? `${vitals.bp_systolic}/${vitals.bp_diastolic}` : "—"} unit="mmHg" color="text-amber-400" />
+        <VitalBox label="Resp Rate" value={vitals ? `${vitals.resp_rate}` : "—"} unit="br/m" color="text-sky-400" />
+        <VitalBox label="Temp" value={vitals ? `${vitals.temp.toFixed(1)}` : "—"} unit="°C" color="text-orange-400" />
+      </div>
 
       <AmbulanceMap />
     </main>
@@ -236,16 +232,21 @@ export default function Home() {
 function VitalBox({
   label,
   value,
+  unit,
   color,
 }: {
   label: string;
   value: string;
+  unit: string;
   color: string;
 }) {
   return (
     <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
       <p className="text-slate-500 text-xs tracking-widest uppercase mb-1">{label}</p>
-      <p className={`text-xl font-bold ${color}`}>{value}</p>
+      <div className="flex items-baseline gap-1.5">
+        <p className={`text-2xl font-bold font-mono tabular-nums ${value === "—" ? "text-slate-700" : color}`}>{value}</p>
+        {value !== "—" && <span className="text-xs text-slate-500">{unit}</span>}
+      </div>
     </div>
   );
 }

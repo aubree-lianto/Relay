@@ -246,7 +246,7 @@ export default function TriagePage() {
       <div className="flex-1 flex overflow-hidden">
 
         {/* ── LEFT PANEL ── */}
-        <aside className="w-72 border-r border-slate-800/60 bg-slate-900/40 flex flex-col p-3 gap-2.5 overflow-y-auto">
+        <aside className="w-80 border-r border-slate-800/60 bg-slate-900/40 flex flex-col p-4 gap-3 overflow-y-auto">
 
           {/* Triage badge */}
           {triage && result ? (
@@ -276,8 +276,8 @@ export default function TriagePage() {
           )}
 
           {/* ETA */}
-          <div className="rounded-2xl p-3 border border-slate-800 bg-slate-900/60">
-            <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500 mb-0.5">
+          <div className="rounded-2xl p-4 border border-slate-800 bg-slate-900/60">
+            <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500 mb-1">
               ETA
             </div>
             {form.estimated_arrival_minutes != null ? (
@@ -293,7 +293,7 @@ export default function TriagePage() {
           </div>
 
           {/* Vitals strip — grows to fill remaining space */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-3 flex-1">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 flex-1">
             <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500 mb-2">
               Vitals
             </div>
@@ -345,7 +345,7 @@ export default function TriagePage() {
 
           {/* Warnings */}
           {result && result.validation_warnings.length > 0 && (
-            <div className="rounded-2xl border border-red-500/20 bg-red-950/20 p-3">
+            <div className="rounded-2xl border border-red-500/20 bg-red-950/20 p-4">
               <div className="text-xs font-semibold uppercase tracking-[0.2em] text-red-400 mb-2">
                 Warnings
               </div>
@@ -362,7 +362,7 @@ export default function TriagePage() {
 
           {/* Missing fields */}
           {result && result.missing_fields.length > 0 && (
-            <div className="rounded-2xl border border-amber-500/20 bg-amber-950/20 p-3">
+            <div className="rounded-2xl border border-amber-500/20 bg-amber-950/20 p-4">
               <div className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-400 mb-2">
                 Missing Information
               </div>
@@ -386,11 +386,11 @@ export default function TriagePage() {
           {/* Voice input area */}
           <div
             className={`border-b border-slate-800/60 transition-all ${
-              status === "idle" && !result ? "flex-1 flex items-center justify-center p-8" : "p-3"
+              !result ? "flex-1 flex items-center justify-center p-8" : "p-4"
             }`}
           >
             <div className={`rounded-2xl border border-slate-800 bg-slate-900/40 flex items-center gap-5 w-full ${
-              status === "idle" && !result ? "flex-col py-10 px-16 w-auto" : "px-5 py-3"
+              status === "idle" && !result ? "flex-col py-10 px-16 w-auto" : "px-6 py-4"
             }`}>
               {/* Status badge */}
               <span
@@ -479,7 +479,7 @@ export default function TriagePage() {
 
           {/* Extracted data — dashboard grid */}
           {result && !editing && (
-            <div className="flex-1 grid grid-cols-3 grid-rows-[auto_1fr_1fr_auto] gap-3 p-4 overflow-hidden">
+            <div className="flex-1 grid grid-cols-3 grid-rows-[auto_1fr_1fr_auto] gap-4 p-5 overflow-hidden">
 
               {/* Row 0: Patient header — spans full width */}
               <div className="col-span-3 flex items-center gap-4 px-1">
