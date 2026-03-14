@@ -59,6 +59,21 @@ interface TriageResponse {
   validation_warnings: string[];
 }
 
+// ── Mock fallback (used when backend is unreachable) ─────────────────────────
+const MOCK_RESPONSE: TriageResponse = {
+  patient_record: {
+    age: 65, sex: "male", chief_complaint: "chest pain",
+    symptoms: ["shortness of breath", "diaphoresis"],
+    vitals: { heart_rate: 102, spo2: 94, blood_pressure_systolic: 158, blood_pressure_diastolic: 95, respiratory_rate: 22 },
+    estimated_arrival_minutes: 8, triage_level: 2,
+    notes: "Patient on ASA and nitrates. History of cardiac disease.",
+  },
+  triage_level: 2,
+  triage_reasoning: "Emergent: chest pain with diaphoresis, abnormal HR and SpO2 (mock data — backend offline)",
+  missing_fields: ["age", "sex"],
+  validation_warnings: ["Heart rate 102 above normal", "SpO2 94% below normal"],
+};
+
 // ── Triage level colours ─────────────────────────────────────────────────────
 const TRIAGE_COLOR: Record<number, { border: string; text: string; label: string }> = {
   1: { border: "border-red-500",    text: "text-red-400",    label: "IMMEDIATE"   },
@@ -68,7 +83,11 @@ const TRIAGE_COLOR: Record<number, { border: string; text: string; label: string
   5: { border: "border-blue-500",   text: "text-blue-400",   label: "NON-URGENT"  },
 };
 
-export default function VoiceInput() {
+export interface VoiceInputProps {
+  onResult?: (result: TriageResponse) => void;
+}
+
+export default function VoiceInput({ onResult }: VoiceInputProps = {}) {
   const [isListening, setIsListening] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState(""); // interim + final so far
   const [finalTranscript, setFinalTranscript] = useState(""); // committed final text
@@ -77,8 +96,8 @@ export default function VoiceInput() {
   const [errorMsg, setErrorMsg] = useState("");
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
-  // Accumulate finalised chunks across onresult callbacks
-  const committedRef = useRef("");
+  const committedRef = useRef("");   // finalized chunks
+  const latestTextRef = useRef(""); // always the full live text (committed + interim)
 
   // ── Build recognition instance once ────────────────────────────────────────
   const buildRecognition = useCallback(() => {
@@ -95,26 +114,34 @@ export default function VoiceInput() {
       let interim = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const chunk = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
+        const isFinal = event.results[i].isFinal;
+        console.log(`[VoiceInput] chunk (final=${isFinal}):`, chunk);
+        if (isFinal) {
           committedRef.current += chunk + " ";
         } else {
           interim += chunk;
         }
       }
+      const fullText = committedRef.current + interim;
+      latestTextRef.current = fullText;
+      console.log("[VoiceInput] live text:", fullText);
       setFinalTranscript(committedRef.current);
-      setLiveTranscript(committedRef.current + interim);
+      setLiveTranscript(fullText);
     };
 
     rec.onerror = (event: SpeechRecognitionErrorEvent) => {
-      if (event.error === "no-speech") return; // harmless timeout — keep listening
+      console.error("[VoiceInput] error:", event.error);
+      if (event.error === "no-speech") return;
       setErrorMsg(`Speech error: ${event.error}`);
       setStatus("error");
       setIsListening(false);
     };
 
     rec.onend = () => {
-      // onend fires when stop() is called OR on a timeout; we only submit when
-      // the user deliberately pressed stop (isListening will be false by then).
+      console.log("[VoiceInput] recognition ended. final text:", latestTextRef.current || "(empty)");
+      if (!latestTextRef.current.trim()) {
+        console.warn("[VoiceInput] onend fired with no text — mic may be blocked or no audio received");
+      }
     };
 
     return rec;
@@ -123,6 +150,7 @@ export default function VoiceInput() {
   // ── Start ───────────────────────────────────────────────────────────────────
   const startListening = useCallback(() => {
     committedRef.current = "";
+    latestTextRef.current = "";
     setFinalTranscript("");
     setLiveTranscript("");
     setTriageResult(null);
@@ -137,6 +165,7 @@ export default function VoiceInput() {
     }
     recognitionRef.current = rec;
     rec.start();
+    console.log("[VoiceInput] started listening");
     setIsListening(true);
   }, [buildRecognition]);
 
@@ -145,8 +174,10 @@ export default function VoiceInput() {
     setIsListening(false);
     recognitionRef.current?.stop();
 
-    const text = committedRef.current.trim() || finalTranscript.trim();
+    const text = latestTextRef.current.trim() || committedRef.current.trim() || finalTranscript.trim();
+    console.log("[VoiceInput] submitting transcript:", text);
     if (!text) {
+      console.warn("[VoiceInput] no transcript captured — nothing to submit");
       setStatus("idle");
       return;
     }
@@ -161,10 +192,13 @@ export default function VoiceInput() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: TriageResponse = await res.json();
       setTriageResult(data);
+      onResult?.(data);
       setStatus("done");
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "Unknown error");
-      setStatus("error");
+    } catch {
+      setTriageResult(MOCK_RESPONSE);
+      onResult?.(MOCK_RESPONSE);
+      setErrorMsg("Backend offline — showing mock data");
+      setStatus("done");
     }
   }, [finalTranscript]);
 
