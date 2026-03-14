@@ -31,30 +31,29 @@ declare global {
   }
 }
 
-// ── Backend response types ───────────────────────────────────────────────────
+// ── Backend response types (aligned with backend schemas.py) ─────────────────
 interface Vitals {
-  heart_rate?: number;
+  pulse_rate?: number;
   spo2?: number;
-  blood_pressure_systolic?: number;
-  blood_pressure_diastolic?: number;
-  respiratory_rate?: number;
+  bp_systolic?: number;
+  bp_diastolic?: number;
+  resp_rate?: number;
+  temp?: number;
 }
 
 interface PatientRecord {
-  age?: number;
-  sex?: string;
+  demographics?: { age?: number; sex?: string; first_name?: string; last_name?: string };
   chief_complaint?: string;
-  symptoms?: string[];
   vitals?: Vitals;
   estimated_arrival_minutes?: number;
-  triage_level?: number;
-  notes?: string;
+  ctas?: number;
+  remarks?: string;
 }
 
 interface TriageResponse {
   patient_record: PatientRecord;
-  triage_level: number;
-  triage_reasoning: string;
+  ctas: number;
+  ctas_reasoning: string;
   missing_fields: string[];
   validation_warnings: string[];
 }
@@ -62,16 +61,17 @@ interface TriageResponse {
 // ── Mock fallback (used when backend is unreachable) ─────────────────────────
 const MOCK_RESPONSE: TriageResponse = {
   patient_record: {
-    age: 65, sex: "male", chief_complaint: "chest pain",
-    symptoms: ["shortness of breath", "diaphoresis"],
-    vitals: { heart_rate: 102, spo2: 94, blood_pressure_systolic: 158, blood_pressure_diastolic: 95, respiratory_rate: 22 },
-    estimated_arrival_minutes: 8, triage_level: 2,
-    notes: "Patient on ASA and nitrates. History of cardiac disease.",
+    demographics: { age: 65, sex: "M" },
+    chief_complaint: "chest pain",
+    vitals: { pulse_rate: 102, spo2: 94, bp_systolic: 158, bp_diastolic: 95, resp_rate: 22 },
+    estimated_arrival_minutes: 8,
+    ctas: 2,
+    remarks: "Patient on ASA and nitrates. History of cardiac disease.",
   },
-  triage_level: 2,
-  triage_reasoning: "Emergent: chest pain with diaphoresis, abnormal HR and SpO2 (mock data — backend offline)",
-  missing_fields: ["age", "sex"],
-  validation_warnings: ["Heart rate 102 above normal", "SpO2 94% below normal"],
+  ctas: 2,
+  ctas_reasoning: "Emergent: chest pain with diaphoresis, abnormal HR and SpO2 (mock data — backend offline)",
+  missing_fields: ["first_name", "last_name"],
+  validation_warnings: ["Pulse rate 102 above normal", "SpO2 94% below normal"],
 };
 
 // ── Triage level colours ─────────────────────────────────────────────────────
@@ -205,7 +205,7 @@ export default function VoiceInput({ onResult }: VoiceInputProps = {}) {
   // Cleanup on unmount
   useEffect(() => () => recognitionRef.current?.stop(), []);
 
-  const tColor = triageResult ? (TRIAGE_COLOR[triageResult.triage_level] ?? TRIAGE_COLOR[3]) : null;
+  const tColor = triageResult ? (TRIAGE_COLOR[triageResult.ctas] ?? TRIAGE_COLOR[3]) : null;
 
   return (
     <div className="w-full max-w-4xl mt-6 font-mono space-y-4">
@@ -268,9 +268,9 @@ export default function VoiceInput({ onResult }: VoiceInputProps = {}) {
         <div className={`border ${tColor.border} rounded bg-black p-5 space-y-4`}>
           {/* Level banner */}
           <div className="flex items-center justify-between">
-            <span className="text-gray-500 text-xs tracking-widest uppercase">ESI Triage Level</span>
+            <span className="text-gray-500 text-xs tracking-widest uppercase">CTAS Level</span>
             <span className={`text-3xl font-bold ${tColor.text}`}>
-              {triageResult.triage_level}{" "}
+              {triageResult.ctas}{" "}
               <span className="text-sm tracking-widest">{tColor.label}</span>
             </span>
           </div>
@@ -278,31 +278,22 @@ export default function VoiceInput({ onResult }: VoiceInputProps = {}) {
           {/* Reasoning */}
           <div>
             <p className="text-gray-600 text-xs tracking-widest uppercase mb-1">Reasoning</p>
-            <p className="text-gray-300 text-sm leading-relaxed">{triageResult.triage_reasoning}</p>
+            <p className="text-gray-300 text-sm leading-relaxed">{triageResult.ctas_reasoning}</p>
           </div>
 
           {/* Patient record grid */}
           <div>
             <p className="text-gray-600 text-xs tracking-widest uppercase mb-2">Patient Record</p>
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <RecordField label="Age"       value={triageResult.patient_record.age?.toString()} />
-              <RecordField label="Sex"       value={triageResult.patient_record.sex} />
+              <RecordField label="Age" value={triageResult.patient_record.demographics?.age?.toString()} />
+              <RecordField label="Sex" value={triageResult.patient_record.demographics?.sex} />
               <RecordField label="Complaint" value={triageResult.patient_record.chief_complaint} className="col-span-2" />
-              <RecordField
-                label="Symptoms"
-                value={triageResult.patient_record.symptoms?.join(", ")}
-                className="col-span-2"
-              />
-              <RecordField label="ETA"       value={triageResult.patient_record.estimated_arrival_minutes != null
+              <RecordField label="ETA" value={triageResult.patient_record.estimated_arrival_minutes != null
                 ? `${triageResult.patient_record.estimated_arrival_minutes} min` : undefined} />
               {triageResult.patient_record.vitals && (
-                <RecordField
-                  label="Vitals"
-                  value={formatVitals(triageResult.patient_record.vitals)}
-                  className="col-span-2"
-                />
+                <RecordField label="Vitals" value={formatVitals(triageResult.patient_record.vitals)} className="col-span-2" />
               )}
-              <RecordField label="Notes" value={triageResult.patient_record.notes} className="col-span-2" />
+              <RecordField label="Remarks" value={triageResult.patient_record.remarks} className="col-span-2" />
             </div>
           </div>
 
@@ -348,11 +339,10 @@ export default function VoiceInput({ onResult }: VoiceInputProps = {}) {
 
 function formatVitals(v: Vitals): string {
   const parts: string[] = [];
-  if (v.heart_rate != null)               parts.push(`HR ${v.heart_rate}`);
-  if (v.spo2 != null)                     parts.push(`SpO₂ ${v.spo2}%`);
-  if (v.blood_pressure_systolic != null && v.blood_pressure_diastolic != null)
-    parts.push(`BP ${v.blood_pressure_systolic}/${v.blood_pressure_diastolic}`);
-  if (v.respiratory_rate != null)         parts.push(`RR ${v.respiratory_rate}`);
+  if (v.pulse_rate != null)                           parts.push(`HR ${v.pulse_rate}`);
+  if (v.spo2 != null)                                 parts.push(`SpO₂ ${v.spo2}%`);
+  if (v.bp_systolic != null && v.bp_diastolic != null) parts.push(`BP ${v.bp_systolic}/${v.bp_diastolic}`);
+  if (v.resp_rate != null)                            parts.push(`RR ${v.resp_rate}`);
   return parts.join("  ·  ");
 }
 
