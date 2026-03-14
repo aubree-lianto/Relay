@@ -2,12 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import VoiceInput from "./components/VoiceInput";
 
 const AmbulanceMap = dynamic(() => import("./components/AmbulanceMap"), {
   ssr: false,
   loading: () => (
-    <div className="w-full max-w-4xl mt-6 h-[420px] border border-green-900 rounded-lg flex items-center justify-center text-green-800 text-xs tracking-widest animate-pulse font-mono">
+    <div className="w-full max-w-4xl mt-6 h-[420px] border border-slate-800 rounded-2xl flex items-center justify-center text-slate-600 text-sm tracking-widest animate-pulse font-mono">
       LOADING MAP…
     </div>
   ),
@@ -23,8 +22,8 @@ interface Vitals {
 }
 
 const WIDTH = 800;
-const HEIGHT = 220;
-const BASELINE = 140;
+const HEIGHT = 200;
+const BASELINE = 120;
 const ERASER_WIDTH = 24;
 const SPEED = 2;
 
@@ -95,14 +94,13 @@ export default function Home() {
     const wctx = waveCanvas.getContext("2d")!;
     const dctx = dotCanvas.getContext("2d")!;
 
-    // Build offscreen grid canvas
     const gridCanvas = document.createElement("canvas");
     gridCanvas.width = WIDTH;
     gridCanvas.height = HEIGHT;
     const gctx = gridCanvas.getContext("2d")!;
-    gctx.fillStyle = "#000";
+    gctx.fillStyle = "#0f172a";
     gctx.fillRect(0, 0, WIDTH, HEIGHT);
-    gctx.strokeStyle = "#0d2b0d";
+    gctx.strokeStyle = "#1e293b";
     gctx.lineWidth = 0.5;
     for (let x = 0; x <= WIDTH; x += 10) {
       gctx.beginPath(); gctx.moveTo(x, 0); gctx.lineTo(x, HEIGHT); gctx.stroke();
@@ -110,7 +108,7 @@ export default function Home() {
     for (let y = 0; y <= HEIGHT; y += 10) {
       gctx.beginPath(); gctx.moveTo(0, y); gctx.lineTo(WIDTH, y); gctx.stroke();
     }
-    gctx.strokeStyle = "#0f3b0f";
+    gctx.strokeStyle = "#334155";
     gctx.lineWidth = 1;
     for (let x = 0; x <= WIDTH; x += 50) {
       gctx.beginPath(); gctx.moveTo(x, 0); gctx.lineTo(x, HEIGHT); gctx.stroke();
@@ -131,7 +129,6 @@ export default function Home() {
       const pxPerBeat = (SPEED * 60) / (pulse_rate / 60);
       const amplitude = bpToAmplitude(bp_systolic);
 
-      // Erase band ahead on wave canvas
       const eraseStart = (cursorX + SPEED + 2) % WIDTH;
       const eraseEnd = eraseStart + ERASER_WIDTH;
       if (eraseEnd <= WIDTH) {
@@ -146,9 +143,8 @@ export default function Home() {
       const currentY = sampleBeat(t, amplitude);
       const nextX = (cursorX + SPEED) % WIDTH;
 
-      // Draw waveform line — no shadow on wave canvas
       wctx.shadowBlur = 0;
-      wctx.strokeStyle = "#00ff88";
+      wctx.strokeStyle = "#38bdf8";
       wctx.lineWidth = 2;
       wctx.lineJoin = "round";
       wctx.lineCap = "round";
@@ -169,10 +165,9 @@ export default function Home() {
         wctx.stroke();
       }
 
-      // Dot canvas: fully clear every frame, draw only the dot
       dctx.clearRect(0, 0, WIDTH, HEIGHT);
       dctx.shadowBlur = 12;
-      dctx.shadowColor = "#ccffe8";
+      dctx.shadowColor = "#bae6fd";
       dctx.fillStyle = "#ffffff";
       dctx.beginPath();
       dctx.arc(nextX, currentY, 4, 0, Math.PI * 2);
@@ -191,15 +186,15 @@ export default function Home() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 font-mono">
+    <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-6 font-sans">
       <div className="w-full max-w-4xl flex items-center justify-between mb-4">
-        <h1 className="text-green-400 text-xl font-bold tracking-widest uppercase">
+        <h1 className="text-sky-400 text-xl font-bold tracking-widest uppercase">
           EKG Monitor
         </h1>
         <span
           className={`text-xs px-3 py-1 rounded-full border ${
             connected
-              ? "border-green-500 text-green-400"
+              ? "border-emerald-500 text-emerald-400"
               : "border-red-500 text-red-400"
           }`}
         >
@@ -207,39 +202,32 @@ export default function Home() {
         </span>
       </div>
 
-      {/* Stacked canvases — dot on top via absolute positioning */}
-      <div className="w-full max-w-4xl border border-green-900 rounded-lg overflow-hidden relative" style={{ height: HEIGHT }}>
+      <div className="w-full max-w-4xl border border-slate-800 rounded-2xl overflow-hidden relative" style={{ height: HEIGHT }}>
         <canvas ref={waveCanvasRef} width={WIDTH} height={HEIGHT} className="absolute inset-0 w-full h-full block" />
         <canvas ref={dotCanvasRef} width={WIDTH} height={HEIGHT} className="absolute inset-0 w-full h-full block" />
         {vitals && (
           <div className="absolute top-3 right-4 text-right z-10">
-            <div className="text-green-300 text-5xl font-bold leading-none">
+            <div className="text-sky-300 text-5xl font-bold leading-none">
               {vitals.pulse_rate}
             </div>
-            <div className="text-green-600 text-xs tracking-widest">BPM</div>
+            <div className="text-sky-600 text-xs tracking-widest">BPM</div>
           </div>
         )}
       </div>
 
       {vitals ? (
         <div className="w-full max-w-4xl grid grid-cols-4 gap-3 mt-4">
-          <VitalBox label="SpO₂" value={`${vitals.spo2}%`} color="text-cyan-400" borderColor="border-cyan-800" />
-          <VitalBox
-            label="BP"
-            value={`${vitals.bp_systolic}/${vitals.bp_diastolic}`}
-            color="text-yellow-400"
-            borderColor="border-yellow-800"
-          />
-          <VitalBox label="RESP" value={`${vitals.resp_rate} br/m`} color="text-blue-400" borderColor="border-blue-800" />
-          <VitalBox label="HR" value={`${vitals.pulse_rate} bpm`} color="text-green-400" borderColor="border-green-800" />
+          <VitalBox label="SpO₂" value={`${vitals.spo2}%`} color="text-cyan-400" />
+          <VitalBox label="BP" value={`${vitals.bp_systolic}/${vitals.bp_diastolic}`} color="text-amber-400" />
+          <VitalBox label="RESP" value={`${vitals.resp_rate} br/m`} color="text-sky-400" />
+          <VitalBox label="HR" value={`${vitals.pulse_rate} bpm`} color="text-emerald-400" />
         </div>
       ) : (
-        <p className="mt-6 text-green-800 animate-pulse tracking-widest text-sm">
+        <p className="mt-6 text-slate-600 animate-pulse tracking-widest text-sm">
           WAITING FOR SIGNAL...
         </p>
       )}
 
-      <VoiceInput />
       <AmbulanceMap />
     </main>
   );
@@ -249,16 +237,14 @@ function VitalBox({
   label,
   value,
   color,
-  borderColor,
 }: {
   label: string;
   value: string;
   color: string;
-  borderColor: string;
 }) {
   return (
-    <div className={`bg-black border ${borderColor} rounded p-4`}>
-      <p className="text-gray-500 text-xs tracking-widest mb-1">{label}</p>
+    <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+      <p className="text-slate-500 text-xs tracking-widest uppercase mb-1">{label}</p>
       <p className={`text-xl font-bold ${color}`}>{value}</p>
     </div>
   );

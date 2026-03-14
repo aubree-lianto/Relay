@@ -25,14 +25,14 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-zinc-950 text-white`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-950 text-slate-100`}
       >
-        <nav className="border-b border-zinc-800 px-6 py-3 flex gap-6 font-mono text-sm">
-          <a href="/" className="text-zinc-400 hover:text-white transition-colors uppercase tracking-widest">
+        <nav className="border-b border-slate-800/60 bg-slate-900/40 px-6 py-3 flex gap-6 text-sm font-medium">
+          <a href="/" className="text-slate-400 hover:text-white transition-colors uppercase tracking-widest">
             EKG Monitor
           </a>
-          <a href="/triage" className="text-zinc-400 hover:text-white transition-colors uppercase tracking-widest">
-            Triage Form
+          <a href="/triage" className="text-slate-400 hover:text-white transition-colors uppercase tracking-widest">
+            Voice Triage
           </a>
         </nav>
         {children}

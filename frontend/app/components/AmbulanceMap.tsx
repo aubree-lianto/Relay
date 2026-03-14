@@ -107,16 +107,16 @@ function makeAmbulanceIcon(unitId: number) {
     html: `
       <div style="
         width:40px;height:40px;
-        background:#dc2626;
-        border:2px solid #fca5a5;
-        border-radius:6px;
+        background:#0ea5e9;
+        border:2px solid #7dd3fc;
+        border-radius:10px;
         display:flex;flex-direction:column;
         align-items:center;justify-content:center;
-        font-family:monospace;
-        box-shadow:0 0 10px rgba(220,38,38,0.7);
+        font-family:system-ui, sans-serif;
+        box-shadow:0 0 14px rgba(14,165,233,0.5);
       ">
         <span style="font-size:18px;line-height:1">🚑</span>
-        <span style="color:#fecaca;font-size:8px;font-weight:bold;letter-spacing:1px">U${unitId}</span>
+        <span style="color:#e0f2fe;font-size:8px;font-weight:bold;letter-spacing:1px">U${unitId}</span>
       </div>`,
   });
 }
@@ -214,18 +214,18 @@ export default function AmbulanceMap() {
   }, []);
 
   return (
-    <div className="w-full max-w-4xl mt-6 font-mono">
+    <div className="w-full max-w-4xl mt-6 font-sans">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-green-400 text-sm font-bold tracking-widest uppercase">
+        <h2 className="text-sky-400 text-sm font-bold tracking-widest uppercase">
           Dispatch Map — Toronto
         </h2>
-        <span className="text-xs text-green-700 tracking-widest">
+        <span className="text-xs text-slate-500 tracking-widest">
           {AMBULANCE_CONFIG.length} UNITS ACTIVE
         </span>
       </div>
 
       <div
-        className="w-full border border-green-900 rounded-lg overflow-hidden"
+        className="w-full border border-slate-800 rounded-2xl overflow-hidden"
         style={{ height: 420 }}
       >
         <MapContainer
@@ -275,17 +275,17 @@ function VitalsPopup({ name, vitals }: { name: string; vitals: Vitals }) {
   return (
     <div
       style={{
-        background: "#0a0a0a",
-        border: "1px solid #166534",
-        borderRadius: 6,
+        background: "#0f172a",
+        border: "1px solid #334155",
+        borderRadius: 12,
         padding: "10px 14px",
-        fontFamily: "monospace",
+        fontFamily: "system-ui, sans-serif",
         minWidth: 180,
       }}
     >
       <div
         style={{
-          color: "#4ade80",
+          color: "#38bdf8",
           fontSize: 11,
           fontWeight: "bold",
           letterSpacing: "0.15em",
@@ -295,12 +295,12 @@ function VitalsPopup({ name, vitals }: { name: string; vitals: Vitals }) {
       >
         {name} — Patient
       </div>
-      <PopupRow label="HR"   value={`${vitals.heart_rate} bpm`}    color="#4ade80" />
+      <PopupRow label="HR"   value={`${vitals.heart_rate} bpm`}    color="#38bdf8" />
       <PopupRow label="SpO₂" value={`${vitals.spo2.toFixed(1)}%`}  color="#22d3ee" />
       <PopupRow
         label="BP"
         value={`${vitals.blood_pressure_systolic}/${vitals.blood_pressure_diastolic}`}
-        color="#facc15"
+        color="#fbbf24"
       />
       <PopupRow label="RESP" value={`${vitals.respiratory_rate} br/m`} color="#60a5fa" />
     </div>
@@ -325,7 +325,7 @@ function PopupRow({
         marginBottom: 4,
       }}
     >
-      <span style={{ color: "#4b5563", fontSize: 10, letterSpacing: "0.1em" }}>
+      <span style={{ color: "#64748b", fontSize: 10, letterSpacing: "0.1em" }}>
         {label}
       </span>
       <span style={{ color, fontSize: 12, fontWeight: "bold" }}>{value}</span>
