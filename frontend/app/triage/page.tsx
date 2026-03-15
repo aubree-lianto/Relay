@@ -158,6 +158,7 @@ export default function TriagePage() {
   const [result, setResult] = useState<TriageResponse | null>(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<PatientRecord>({});
+  const [processingSteps, setProcessingSteps] = useState<{step: string; data?: any}[]>([]);
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const committedRef = useRef("");
@@ -314,12 +315,48 @@ export default function TriagePage() {
     setIsListening(false);
     recognitionRef.current?.stop();
 
-    // ── DEMO MODE: always load mock after recording ──
+    const transcript = latestTextRef.current.trim();
+    if (!transcript) {
+        setStatus("idle");
+        return;
+    }
+
     setStatus("processing");
-    setTimeout(() => {
-      loadMock();
-    }, 1200);
-  }, [loadMock]);
+    setProcessingSteps([]); // reset
+    
+    const ws = new WebSocket("ws://localhost:8000/ws/triage");
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ transcript }));
+    };
+    
+    ws.onmessage = (e) => {
+      const payload = JSON.parse(e.data);
+      if (payload.type === "status") {
+          if (payload.step === "done") {
+              setStatus("done");
+              ws.close();
+          }
+      } else if (payload.type === "tool_result") {
+          setProcessingSteps(prev => [...prev, { step: payload.tool, data: payload.data }]);
+      } else if (payload.type === "final") {
+          setResult(payload as TriageResponse);
+          setForm({
+            ...payload.patient_record,
+            medications: Array.isArray(payload.patient_record.medications) ? payload.patient_record.medications : [],
+            relevant_past_history: Array.isArray(payload.patient_record.relevant_past_history) ? payload.patient_record.relevant_past_history : [],
+          });
+      } else if (payload.type === "error") {
+          console.error(payload.message);
+          setStatus("idle");
+          ws.close();
+      }
+    };
+    
+    ws.onerror = (e) => {
+        console.error("Triage WS error:", e);
+        setStatus("idle");
+    };
+  }, []);
 
   useEffect(() => () => recognitionRef.current?.stop(), []);
 
@@ -576,9 +613,39 @@ export default function TriagePage() {
                   </p>
                 </div>
               ) : status === "processing" ? (
-                <div className="text-center">
-                  <div className="text-amber-400 text-lg font-medium tracking-[0.15em] animate-pulse">
-                    ANALYZING TRANSCRIPT...
+                <div className="w-full max-w-2xl mx-auto py-8">
+                  <div className="text-amber-400 text-lg font-medium tracking-[0.15em] mb-8 text-center animate-pulse flex flex-col items-center justify-center">
+                    <span className="bg-amber-950/40 px-6 py-2 rounded-full border border-amber-500/20 shadow-[0_0_20px_rgba(245,158,11,0.15)] flex items-center gap-3">
+                      <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+                      AGENTIC PIPELINE EXECUTING...
+                    </span>
+                  </div>
+                  <div className="space-y-4">
+                    {processingSteps.map((s, i) => (
+                      <div key={i} className="rounded-xl border border-sky-500/30 bg-slate-900/60 p-4 transition-all animate-in fade-in slide-in-from-bottom-4 shadow-lg shadow-sky-500/5">
+                        <div className="flex items-center gap-3 mb-1">
+                          <div className="w-6 h-6 rounded-full bg-sky-500/20 flex items-center justify-center border border-sky-500/50">
+                            <div className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+                          </div>
+                          <div className="font-mono text-sky-400 text-sm font-semibold tracking-wide flex-1 flex justify-between">
+                            <span>EXECUTE NODE: <span className="text-white bg-slate-800 px-2 py-0.5 rounded ml-1">{s.step.toUpperCase()}</span></span>
+                            <span className="opacity-50 text-sky-200">OK</span>
+                          </div>
+                        </div>
+                        {s.data && Object.keys(s.data).length > 0 && (
+                          <div className="mt-3 pl-9">
+                            <pre className="text-xs text-slate-300 font-mono bg-black/50 p-3.5 rounded-lg overflow-x-auto border border-slate-800 break-words whitespace-pre-wrap max-h-64 scrollbar-thin scrollbar-thumb-slate-700">
+                              {JSON.stringify(s.data, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {processingSteps.length > 0 && status === "processing" && (
+                      <div className="pl-9 pt-2">
+                         <div className="h-1.5 w-1.5 rounded-full bg-sky-400/50 shadow-[0_0_10px_rgba(56,189,248,0.5)] animate-bounce" />
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
