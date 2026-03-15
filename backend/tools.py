@@ -118,19 +118,24 @@ def parse_transcript(transcript: str) -> str:
     Use when you receive raw paramedic speech and need to convert it into ACR fields."""
     llm = _get_parser_llm()
     result = llm.invoke(
-        f"""Extract patient information from this paramedic voice transcript.
-        Map to Ontario Ambulance Call Report (ACR) fields. Use null for missing values.
+        f"""Extract ALL patient information from this paramedic voice transcript.
+        Map every detail to Ontario Ambulance Call Report (ACR) fields. Use null only if truly not mentioned.
 
         Transcript:
         {transcript}
 
-        Extract: last_name, first_name, age, sex, weight_kg, date_of_occurrence (YYYY/MM/DD),
-        time_of_occurrence (HH:MM), chief_complaint, incident_history, symptoms (list if multiple),
-        past history (cardiac, diabetes,
-        respiratory, hypertension as booleans if mentioned), medications, allergies (NKA/CNO or list),
-        treatment_prior_to_arrival, general_appearance, skin_colour, skin_condition, pulse_rate,
-        resp_rate, bp_systolic, bp_diastolic, temp, spo2, estimated_arrival_minutes, pick_up_code (A-Z),
-        remarks."""
+        Extract these fields:
+        - Demographics: last_name, first_name, age (integer), sex (M/F/Other), weight_kg
+        - Timing: date_of_occurrence (YYYY/MM/DD), time_of_occurrence (HH:MM)
+        - Clinical: chief_complaint (short phrase), incident_history (full narrative of onset/context/symptoms), symptoms (list)
+        - Past history booleans (true/false/null): past_history_cardiac, past_history_hypertension, past_history_diabetes, past_history_respiratory, past_history_seizure, past_history_psychiatric, past_history_stroke_tia
+        - Medications (comma-separated string), allergies (NKA/CNO/list), treatment_prior_to_arrival
+        - Physical exam: general_appearance (free text), skin_colour (Pale/Flushed/Cyanosis/Jaundice/Unremarkable), skin_condition (Diaphoretic/Dry/Clammy/Unremarkable)
+        - Vitals: pulse_rate (int), resp_rate (int), bp_systolic (int), bp_diastolic (int), spo2 (float), temp (float)
+        - Assessment: gcs (int 3-15), pain_scale (int 0-10)
+        - Transport: estimated_arrival_minutes (int), pick_up_code (A-Z letter), remarks (anything else)
+
+        Infer skin findings from descriptions: "diaphoretic" → skin_condition=Diaphoretic, "pale" → skin_colour=Pale, "short of breath" → symptoms includes dyspnea."""
     )
     return json.dumps(result.model_dump(), default=str)
 

@@ -1,6 +1,8 @@
 import asyncio
+import concurrent.futures
 import json
 import random
+import traceback
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -9,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import ToolMessage
 
 from schemas import TriageProcessRequest, TriageProcessResponse
-from agent import run_triage, extract_response, agent as triage_agent
+from agent import run_triage, extract_response
 from tools import PATIENT_STORE
 
 app = FastAPI()
@@ -46,6 +48,59 @@ async def vitals_stream(websocket: WebSocket):
         await websocket.close()
 
 
+@app.websocket("/ws/triage")
+async def triage_stream(websocket: WebSocket):
+    """Run triage agent in a thread and stream each tool result back over WebSocket."""
+    await websocket.accept()
+    try:
+        data = await websocket.receive_text()
+        payload = json.loads(data)
+        transcript = payload.get("transcript", "")
+
+        await websocket.send_json({"type": "status", "step": "parsing"})
+
+        # Run the synchronous LangGraph agent in a thread so the event loop stays alive
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            state = await loop.run_in_executor(pool, run_triage, transcript)
+
+        messages = state.get("messages", [])
+
+        # Stream each tool result
+        for msg in messages:
+            if isinstance(msg, ToolMessage):
+                try:
+                    result_data = json.loads(msg.content)
+                except (json.JSONDecodeError, TypeError):
+                    result_data = {"raw": str(msg.content)}
+                await websocket.send_json({
+                    "type": "tool_result",
+                    "tool": msg.name,
+                    "data": result_data,
+                })
+
+        # Send final extracted summary
+        result = extract_response(messages)
+        await websocket.send_json({
+            "type": "final",
+            "ctas": result["ctas"],
+            "ctas_reasoning": result["ctas_reasoning"],
+            "missing_fields": result["missing_fields"],
+            "validation_warnings": result["validation_warnings"],
+        })
+
+        await websocket.send_json({"type": "status", "step": "done"})
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        traceback.print_exc()
+        try:
+            await websocket.send_json({"type": "error", "message": str(e)})
+        except Exception:
+            pass
+
+
 @app.post("/triage/process", response_model=TriageProcessResponse)
 def triage_process(request: TriageProcessRequest):
     """Process a paramedic voice transcript and return structured patient data with triage level."""
@@ -65,49 +120,6 @@ def triage_process(request: TriageProcessRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.websocket("/ws/triage")
-async def triage_stream(websocket: WebSocket):
-    """Stream triage agent tool results in real time as each step completes."""
-    await websocket.accept()
-    try:
-        data = await websocket.receive_text()
-        payload = json.loads(data)
-        transcript = payload.get("transcript", "")
-
-        await websocket.send_json({"type": "status", "step": "parsing"})
-
-        from langchain_core.messages import HumanMessage
-        messages = [HumanMessage(content=f"Process this paramedic transcript:\n\n{transcript}")]
-
-        # Stream each step of the agent graph
-        async for event in triage_agent.astream_events(
-            {"messages": messages}, version="v2"
-        ):
-            kind = event.get("event")
-            # Tool finished — emit its result
-            if kind == "on_tool_end":
-                tool_name = event.get("name", "")
-                output = event.get("data", {}).get("output", "")
-                try:
-                    result = json.loads(output) if isinstance(output, str) else output
-                except (json.JSONDecodeError, TypeError):
-                    result = {"raw": str(output)}
-                await websocket.send_json({
-                    "type": "tool_result",
-                    "tool": tool_name,
-                    "data": result,
-                })
-
-        await websocket.send_json({"type": "status", "step": "done"})
-    except WebSocketDisconnect:
-        pass
-    except Exception as e:
-        try:
-            await websocket.send_json({"type": "error", "message": str(e)})
-        except Exception:
-            pass
 
 
 @app.get("/patients")

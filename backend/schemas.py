@@ -208,6 +208,13 @@ class TranscriptParseResult(BaseModel):
     past_history_diabetes: Optional[bool] = None
     past_history_respiratory: Optional[bool] = None
     past_history_hypertension: Optional[bool] = None
+    past_history_seizure: Optional[bool] = None
+    past_history_psychiatric: Optional[bool] = None
+    past_history_stroke_tia: Optional[bool] = None
+
+    # Assessment
+    gcs: Optional[int] = Field(None, description="Glasgow Coma Scale (3-15)")
+    pain_scale: Optional[int] = Field(None, description="Pain scale (0-10)")
 
     # Medications, Allergies
     medications: Optional[str] = None

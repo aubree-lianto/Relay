@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { downloadAcrPdf } from "../components/AcrPdf";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -162,8 +163,12 @@ export default function TriagePage() {
   const committedRef = useRef("");
   const latestTextRef = useRef("");
 
-  // ── Live EKG state ──────────────────────────────────────────────────────
+  // ── Live EKG / vitals state ──────────────────────────────────────────────
   const [liveHR, setLiveHR] = useState<number | null>(null);
+  const [liveVitals, setLiveVitals] = useState<{
+    pulse_rate?: number; resp_rate?: number;
+    bp_systolic?: number; bp_diastolic?: number; spo2?: number;
+  }>({});
   const waveCanvasRef = useRef<HTMLCanvasElement>(null);
   const dotCanvasRef = useRef<HTMLCanvasElement>(null);
   const liveHRRef = useRef(75);
@@ -186,6 +191,13 @@ export default function TriagePage() {
       const data = JSON.parse(e.data);
       liveHRRef.current = data.pulse_rate ?? 75;
       setLiveHR(data.pulse_rate ?? null);
+      setLiveVitals({
+        pulse_rate: data.pulse_rate,
+        resp_rate: data.resp_rate,
+        bp_systolic: data.bp_systolic,
+        bp_diastolic: data.bp_diastolic,
+        spo2: data.spo2,
+      });
     };
     return () => ws.close();
   }, []);
@@ -301,111 +313,13 @@ export default function TriagePage() {
   const stopAndSubmit = useCallback(() => {
     setIsListening(false);
     recognitionRef.current?.stop();
-    const text = latestTextRef.current.trim() || committedRef.current.trim();
-    if (!text) { setStatus("idle"); return; }
 
+    // ── DEMO MODE: always load mock after recording ──
     setStatus("processing");
-    setResult(null);
-    setForm({});
-
-    const ws = new WebSocket("ws://localhost:8000/ws/triage");
-
-    ws.onopen = () => ws.send(JSON.stringify({ transcript: text }));
-
-    ws.onmessage = (e) => {
-      const msg = JSON.parse(e.data) as {
-        type: string; step?: string; tool?: string;
-        data?: Record<string, unknown>; message?: string;
-      };
-
-      if (msg.type === "status" && msg.step === "done") {
-        setStatus("done");
-        ws.close();
-        return;
-      }
-
-      if (msg.type === "error") {
-        setResult(MOCK_RESPONSE);
-        setStatus("done");
-        ws.close();
-        return;
-      }
-
-      if (msg.type !== "tool_result" || !msg.data) return;
-      const d = msg.data;
-
-      if (msg.tool === "parse_transcript") {
-        // Flatten nested or flat parse result into form fields
-        const demo = (d.demographics ?? {}) as Record<string, unknown>;
-        const vitalsRaw = (d.vitals ?? {}) as Record<string, unknown>;
-        const pastRaw = (d.past_history ?? {}) as Record<string, boolean>;
-        const meds = d.medications;
-
-        setForm(f => ({
-          ...f,
-          first_name: (demo.first_name ?? d.first_name ?? f.first_name) as string | undefined,
-          last_name: (demo.last_name ?? d.last_name ?? f.last_name) as string | undefined,
-          age: (demo.age ?? d.age ?? f.age) as number | undefined,
-          sex: (demo.sex ?? d.sex ?? f.sex) as string | undefined,
-          weight_kg: (demo.weight_kg ?? d.weight_kg ?? f.weight_kg) as number | undefined,
-          chief_complaint: (d.chief_complaint ?? f.chief_complaint) as string | undefined,
-          incident_history: (d.incident_history ?? f.incident_history) as string | undefined,
-          allergies: (d.allergies ?? f.allergies) as string | undefined,
-          estimated_arrival_minutes: (d.estimated_arrival_minutes ?? f.estimated_arrival_minutes) as number | undefined,
-          gcs: (d.gcs ?? f.gcs) as number | undefined,
-          pain_scale: (d.pain_scale ?? f.pain_scale) as number | undefined,
-          notes: (d.remarks ?? d.notes ?? f.notes) as string | undefined,
-          medications: typeof meds === "string"
-            ? meds.split(/,\s*/).filter(Boolean)
-            : Array.isArray(meds) ? meds as string[]
-            : f.medications,
-          relevant_past_history: Object.keys(pastRaw).length > 0
-            ? Object.entries(pastRaw).filter(([, v]) => v === true).map(([k]) => k.charAt(0).toUpperCase() + k.slice(1))
-            : f.relevant_past_history,
-          vitals: {
-            heart_rate: (vitalsRaw.pulse_rate ?? vitalsRaw.heart_rate ?? f.vitals?.heart_rate) as number | undefined,
-            spo2: (vitalsRaw.spo2 ?? f.vitals?.spo2) as number | undefined,
-            blood_pressure_systolic: (vitalsRaw.bp_systolic ?? vitalsRaw.blood_pressure_systolic ?? f.vitals?.blood_pressure_systolic) as number | undefined,
-            blood_pressure_diastolic: (vitalsRaw.bp_diastolic ?? vitalsRaw.blood_pressure_diastolic ?? f.vitals?.blood_pressure_diastolic) as number | undefined,
-            respiratory_rate: (vitalsRaw.resp_rate ?? vitalsRaw.respiratory_rate ?? f.vitals?.respiratory_rate) as number | undefined,
-          },
-        }));
-      }
-
-      if (msg.tool === "validate_vitals") {
-        const warnings = (d.warnings ?? []) as string[];
-        setResult(r => r
-          ? { ...r, validation_warnings: warnings }
-          : { patient_record: {}, triage_level: 3, triage_reasoning: "", missing_fields: [], validation_warnings: warnings }
-        );
-      }
-
-      if (msg.tool === "check_missing_fields") {
-        const missing = [
-          ...((d.missing_required ?? []) as string[]),
-          ...((d.missing_preferred ?? []) as string[]),
-        ];
-        setResult(r => r
-          ? { ...r, missing_fields: missing }
-          : { patient_record: {}, triage_level: 3, triage_reasoning: "", missing_fields: missing, validation_warnings: [] }
-        );
-      }
-
-      if (msg.tool === "compute_triage_score") {
-        const ctas = (d.ctas ?? d.triage_level ?? 3) as number;
-        const reasoning = (d.reasoning ?? "") as string;
-        setResult(r => r
-          ? { ...r, triage_level: ctas, triage_reasoning: reasoning }
-          : { patient_record: {}, triage_level: ctas, triage_reasoning: reasoning, missing_fields: [], validation_warnings: [] }
-        );
-      }
-    };
-
-    ws.onerror = () => {
-      setResult(MOCK_RESPONSE);
-      setStatus("done");
-    };
-  }, []);
+    setTimeout(() => {
+      loadMock();
+    }, 1200);
+  }, [loadMock]);
 
   useEffect(() => () => recognitionRef.current?.stop(), []);
 
@@ -492,7 +406,7 @@ export default function TriagePage() {
             <div className="space-y-2">
               <VitalRow
                 label="HR"
-                value={form.vitals?.heart_rate}
+                value={form.vitals?.heart_rate ?? liveVitals.pulse_rate}
                 unit="bpm"
                 warn={result?.validation_warnings.some((w) =>
                   w.toLowerCase().includes("heart"),
@@ -500,7 +414,7 @@ export default function TriagePage() {
               />
               <VitalRow
                 label="SpO2"
-                value={form.vitals?.spo2}
+                value={form.vitals?.spo2 ?? liveVitals.spo2}
                 unit="%"
                 warn={result?.validation_warnings.some((w) =>
                   w.toLowerCase().includes("spo2"),
@@ -509,8 +423,8 @@ export default function TriagePage() {
               <VitalRow
                 label="BP"
                 value={
-                  form.vitals?.blood_pressure_systolic != null
-                    ? `${form.vitals.blood_pressure_systolic}/${form.vitals.blood_pressure_diastolic}`
+                  (form.vitals?.blood_pressure_systolic ?? liveVitals.bp_systolic) != null
+                    ? `${form.vitals?.blood_pressure_systolic ?? liveVitals.bp_systolic}/${form.vitals?.blood_pressure_diastolic ?? liveVitals.bp_diastolic}`
                     : undefined
                 }
                 unit="mmHg"
@@ -522,7 +436,7 @@ export default function TriagePage() {
               />
               <VitalRow
                 label="RR"
-                value={form.vitals?.respiratory_rate}
+                value={form.vitals?.respiratory_rate ?? liveVitals.resp_rate}
                 unit="/min"
                 warn={false}
               />
@@ -853,8 +767,12 @@ export default function TriagePage() {
             >
               New Triage
             </button>
-            <button className="text-base font-semibold uppercase tracking-[0.1em] px-8 py-3 rounded-xl bg-sky-500 text-white hover:bg-sky-400 transition-colors shadow-lg shadow-sky-500/20 cursor-pointer">
-              Submit to Hospital
+            <button
+              onClick={() => result && downloadAcrPdf(result, form)}
+              disabled={!result}
+              className="text-base font-semibold uppercase tracking-[0.1em] px-8 py-3 rounded-xl bg-sky-500 text-white hover:bg-sky-400 transition-colors shadow-lg shadow-sky-500/20 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Submit &amp; Download PDF
             </button>
           </div>
         </div>
