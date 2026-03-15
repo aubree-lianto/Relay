@@ -1,10 +1,11 @@
 import asyncio
 import json
+import json
 import random
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, WebSocket
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
@@ -124,6 +125,49 @@ async def triage_process_stream(request: TriageProcessRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.websocket("/ws/triage")
+async def triage_stream(websocket: WebSocket):
+    """Stream triage agent tool results in real time as each step completes."""
+    await websocket.accept()
+    try:
+        data = await websocket.receive_text()
+        payload = json.loads(data)
+        transcript = payload.get("transcript", "")
+
+        await websocket.send_json({"type": "status", "step": "parsing"})
+
+        from langchain_core.messages import HumanMessage
+        messages = [HumanMessage(content=f"Process this paramedic transcript:\n\n{transcript}")]
+
+        # Stream each step of the agent graph
+        async for event in triage_agent.astream_events(
+            {"messages": messages}, version="v2"
+        ):
+            kind = event.get("event")
+            # Tool finished — emit its result
+            if kind == "on_tool_end":
+                tool_name = event.get("name", "")
+                output = event.get("data", {}).get("output", "")
+                try:
+                    result = json.loads(output) if isinstance(output, str) else output
+                except (json.JSONDecodeError, TypeError):
+                    result = {"raw": str(output)}
+                await websocket.send_json({
+                    "type": "tool_result",
+                    "tool": tool_name,
+                    "data": result,
+                })
+
+        await websocket.send_json({"type": "status", "step": "done"})
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        try:
+            await websocket.send_json({"type": "error", "message": str(e)})
+        except Exception:
+            pass
 
 
 @app.get("/patients")
