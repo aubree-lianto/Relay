@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import ToolMessage
 
 from schemas import TriageProcessRequest, TriageProcessResponse
-from agent import run_triage, extract_response
+from agent import run_triage, agent as triage_agent
 from tools import PATIENT_STORE
 
 app = FastAPI()
@@ -50,43 +50,47 @@ async def vitals_stream(websocket: WebSocket):
 
 @app.websocket("/ws/triage")
 async def triage_stream(websocket: WebSocket):
-    """Run triage agent in a thread and stream each tool result back over WebSocket."""
+    """Run triage agent and stream each node execution back over WebSocket."""
     await websocket.accept()
     try:
         data = await websocket.receive_text()
         payload = json.loads(data)
         transcript = payload.get("transcript", "")
 
-        await websocket.send_json({"type": "status", "step": "parsing"})
+        await websocket.send_json({"type": "status", "step": "starting"})
 
-        # Run the synchronous LangGraph agent in a thread so the event loop stays alive
-        loop = asyncio.get_event_loop()
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            state = await loop.run_in_executor(pool, run_triage, transcript)
+        initial_state = {
+            "transcript": transcript,
+            "patient_record": {},
+            "validation_warnings": [],
+            "missing_fields": [],
+            "ctas": 3,
+            "ctas_reasoning": "",
+            "problem_code": None
+        }
 
-        messages = state.get("messages", [])
+        current_state = initial_state.copy()
 
-        # Stream each tool result
-        for msg in messages:
-            if isinstance(msg, ToolMessage):
-                try:
-                    result_data = json.loads(msg.content)
-                except (json.JSONDecodeError, TypeError):
-                    result_data = {"raw": str(msg.content)}
+        # Stream the exact nodes being executed by LangGraph
+        async for output in triage_agent.astream(initial_state, stream_mode="updates"):
+            for node_name, state_update in output.items():
+                current_state.update(state_update)
                 await websocket.send_json({
                     "type": "tool_result",
-                    "tool": msg.name,
-                    "data": result_data,
+                    "tool": node_name,
+                    "data": state_update,
                 })
+                # Add a tiny visual delay so the user can easily perceive the rapid processing steps
+                await asyncio.sleep(0.4)
 
         # Send final extracted summary
-        result = extract_response(messages)
         await websocket.send_json({
             "type": "final",
-            "ctas": result["ctas"],
-            "ctas_reasoning": result["ctas_reasoning"],
-            "missing_fields": result["missing_fields"],
-            "validation_warnings": result["validation_warnings"],
+            "patient_record": current_state.get("patient_record", {}),
+            "ctas": current_state.get("ctas"),
+            "ctas_reasoning": current_state.get("ctas_reasoning"),
+            "missing_fields": current_state.get("missing_fields", []),
+            "validation_warnings": current_state.get("validation_warnings", []),
         })
 
         await websocket.send_json({"type": "status", "step": "done"})
@@ -105,18 +109,15 @@ async def triage_stream(websocket: WebSocket):
 def triage_process(request: TriageProcessRequest):
     """Process a paramedic voice transcript and return structured patient data with triage level."""
     try:
-        state = run_triage(request.transcript)
-        messages = state.get("messages", [])
-        result = extract_response(messages)
+        result = run_triage(request.transcript)
 
-        patient_record = result["patient_record"]
         return TriageProcessResponse(
-            patient_record=patient_record,
-            ctas=result["ctas"],
-            ctas_reasoning=result["ctas_reasoning"],
+            patient_record=result.get("patient_record", {}),
+            ctas=result.get("ctas", 3),
+            ctas_reasoning=result.get("ctas_reasoning", ""),
             problem_code=result.get("problem_code"),
-            missing_fields=result["missing_fields"],
-            validation_warnings=result["validation_warnings"],
+            missing_fields=result.get("missing_fields", []),
+            validation_warnings=result.get("validation_warnings", []),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
