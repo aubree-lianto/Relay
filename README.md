@@ -1,4 +1,4 @@
-# Paramedic Voice Triage System
+# Relay - A Paramedic Voice Triage System
 
 A real-time emergency triage system that allows paramedics to relay patient information via voice while en route to the hospital. The system converts spoken input into structured patient data and streams live vitals to a hospital dashboard.
 
