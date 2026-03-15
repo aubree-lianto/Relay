@@ -1,4 +1,5 @@
 """LangGraph triage agent for paramedic voice transcripts."""
+from __future__ import annotations
 
 import json
 import os

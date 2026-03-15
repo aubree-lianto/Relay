@@ -1,6 +1,7 @@
 """Tools for the paramedic triage LangGraph agent.
 Aligned with Ontario Ambulance Call Report (ACR).
 """
+from __future__ import annotations
 
 import json
 import os

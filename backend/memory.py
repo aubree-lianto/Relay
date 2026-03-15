@@ -4,6 +4,7 @@ Stores past triage cases and retrieves similar ones to inform the agent.
 Uses Moorcheh's ITS (Information-Theoretic Score) for high-accuracy semantic search.
 Gracefully degrades when MOORCHEH_API_KEY is not set.
 """
+from __future__ import annotations
 
 import os
 import time
