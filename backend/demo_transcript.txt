@@ -1,0 +1,18 @@
+import requests, json
+
+transcript = (
+    "Female patient, approximately 34 years old. Chief complaint is severe difficulty breathing "
+    "with wheezing, started about 25 minutes ago after exposure to a cat at a friend's house. "
+    "Patient has a history of asthma and is on Salbutamol inhaler. She has already used her inhaler "
+    "twice with minimal relief. Respiratory rate 32, SpO2 87 percent, pulse 124, blood pressure "
+    "138 over 82. Patient is anxious and using accessory muscles to breathe. Skin appears flushed. "
+    "Estimated arrival 10 minutes."
+)
+
+resp = requests.post(
+    "http://localhost:8000/triage/process",
+    json={"transcript": transcript},
+    timeout=60,
+)
+resp.raise_for_status()
+print(json.dumps(resp.json(), indent=2))
