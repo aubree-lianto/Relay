@@ -25,14 +25,15 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-950 text-slate-100`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-950 text-slate-100 h-screen flex flex-col overflow-hidden`}
+        suppressHydrationWarning
       >
         <nav className="border-b border-slate-800/60 bg-slate-900/40 px-6 py-3 flex items-center justify-center gap-8 text-sm font-medium">
           <a href="/" className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors uppercase tracking-widest">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+              <circle cx="12" cy="12" r="3"/><path d="M2 12h3M19 12h3M12 2v3M12 19v3"/>
             </svg>
-            EKG Monitor
+            Dispatch Map
           </a>
           <a href="/triage" className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors uppercase tracking-widest">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

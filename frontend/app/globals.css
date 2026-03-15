@@ -17,3 +17,31 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
+
+/* Custom scrollbar — thin, dark, rounded */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}

@@ -173,7 +173,7 @@ export default function TriagePage() {
   const dotCanvasRef = useRef<HTMLCanvasElement>(null);
   const liveHRRef = useRef(75);
 
-  const EKG_W = 260;
+  const EKG_W = 320;
   const EKG_H = 80;
   const EKG_BASELINE = 45;
   const EKG_SPEED = 2;
@@ -329,11 +329,11 @@ export default function TriagePage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <main className="h-[calc(100vh-49px)] bg-slate-950 text-slate-100 font-sans flex flex-col overflow-hidden">
-      <div className="flex-1 flex overflow-hidden">
+    <main className="min-h-[calc(100vh-49px)] bg-slate-950 text-slate-100 font-sans flex flex-col">
+      <div className="flex-1 flex flex-col lg:flex-row lg:h-[calc(100vh-49px)] overflow-hidden">
 
         {/* ── LEFT PANEL ── */}
-        <aside className="w-96 border-r border-slate-800/60 bg-slate-900/40 flex flex-col p-5 gap-3 overflow-y-auto">
+        <aside className="w-full lg:w-80 xl:w-96 border-b lg:border-b-0 lg:border-r border-slate-800/60 bg-slate-900/40 flex flex-col p-4 gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
 
           {/* Triage badge */}
           {triage && result ? (
@@ -392,18 +392,18 @@ export default function TriagePage() {
                 </div>
               )}
             </div>
-            <div className="relative rounded-lg overflow-hidden" style={{ height: 80 }}>
-              <canvas ref={waveCanvasRef} width={260} height={80} className="absolute inset-0 w-full h-full block" />
-              <canvas ref={dotCanvasRef} width={260} height={80} className="absolute inset-0 w-full h-full block" />
+            <div className="relative rounded-lg overflow-hidden w-full" style={{ height: 80 }}>
+              <canvas ref={waveCanvasRef} width={320} height={80} className="absolute inset-0 w-full h-full block" style={{ imageRendering: "pixelated" }} />
+              <canvas ref={dotCanvasRef} width={320} height={80} className="absolute inset-0 w-full h-full block" />
             </div>
           </div>
 
           {/* Vitals strip */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 flex-1">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 lg:flex-1">
             <div className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500 mb-3">
               Vitals
             </div>
-            <div className="space-y-2">
+            <div className="grid grid-cols-2 lg:grid-cols-1 gap-x-4 gap-y-0">
               <VitalRow
                 label="HR"
                 value={form.vitals?.heart_rate ?? liveVitals.pulse_rate}
@@ -451,7 +451,7 @@ export default function TriagePage() {
 
           {/* Voice input — sidebar mic */}
           <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-            <div className="flex flex-col items-center gap-3">
+            <div className="flex flex-row lg:flex-col items-center justify-center gap-4 lg:gap-3">
               {/* Status badge */}
               <span
                 className={`text-sm font-semibold tracking-[0.15em] uppercase px-4 py-1.5 rounded-full border transition-colors ${
@@ -519,11 +519,11 @@ export default function TriagePage() {
         </aside>
 
         {/* ── MAIN AREA ── */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col lg:overflow-hidden min-w-0">
 
           {/* Warnings & Missing info bar */}
           {result && (result.validation_warnings.length > 0 || result.missing_fields.length > 0) && (
-            <div className="border-b border-slate-800/60 p-4 flex items-stretch gap-4">
+            <div className="border-b border-slate-800/60 p-4 flex flex-col sm:flex-row items-stretch gap-4">
               {/* Warnings */}
               {result.validation_warnings.length > 0 && (
                 <div className="flex-1 rounded-2xl border border-red-500/20 bg-red-950/20 p-5 flex flex-col justify-center">
@@ -593,10 +593,10 @@ export default function TriagePage() {
 
           {/* Extracted data — dashboard grid */}
           {result && !editing && (
-            <div className="flex-1 grid grid-cols-3 grid-rows-[auto_1fr_1fr_auto] gap-4 p-5 overflow-hidden">
+            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 auto-rows-auto gap-4 p-4 lg:p-5 overflow-y-auto overflow-x-hidden">
 
               {/* Row 0: Patient header — spans full width */}
-              <div className="col-span-3 flex items-center gap-4 px-1">
+              <div className="col-span-1 md:col-span-2 xl:col-span-3 flex items-center gap-4 px-1 flex-wrap">
                 <h2 className="flex-1 text-2xl font-bold text-white tracking-tight">
                   {form.age ? `${form.age}${form.sex ? form.sex[0].toUpperCase() : ""}` : "Unknown Patient"}
                   {form.chief_complaint && (
@@ -613,7 +613,7 @@ export default function TriagePage() {
               </div>
 
               {/* Row 1: Reasoning (2 cols) + Demographics (1 col) */}
-              <div className="col-span-2 min-h-0">
+              <div className="col-span-1 xl:col-span-2">
                 <StretchCard>
                   <CardLabel>Triage Reasoning</CardLabel>
                   <p className="text-lg text-slate-300 leading-relaxed">
@@ -622,10 +622,10 @@ export default function TriagePage() {
                 </StretchCard>
               </div>
 
-              <div className="min-h-0">
+              <div>
                 <StretchCard>
                   <CardLabel>Demographics</CardLabel>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-4">
                     <DataRow label="First Name" value={form.first_name} missing={result.missing_fields.includes("first_name")} />
                     <DataRow label="Last Name" value={form.last_name} missing={result.missing_fields.includes("last_name")} />
                     <DataRow label="Age" value={form.age != null ? `${form.age}` : undefined} />
@@ -637,10 +637,10 @@ export default function TriagePage() {
               </div>
 
               {/* Row 2: Clinical (2 cols) + Meds & History (1 col) */}
-              <div className="col-span-2 min-h-0">
+              <div className="col-span-1 xl:col-span-2">
                 <StretchCard>
                   <CardLabel>Clinical Information</CardLabel>
-                  <div className="grid grid-cols-2 gap-x-10 gap-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
                     <DataRow label="Chief Complaint" value={form.chief_complaint} />
                     <DataRow label="Symptoms" value={form.symptoms?.join(", ")} />
                     <DataRow label="Allergies" value={form.allergies} />
@@ -650,7 +650,7 @@ export default function TriagePage() {
                 </StretchCard>
               </div>
 
-              <div className="min-h-0">
+              <div>
                 <StretchCard>
                   <CardLabel>Medications</CardLabel>
                   <div className="flex flex-wrap gap-1.5 mb-4">
@@ -680,7 +680,7 @@ export default function TriagePage() {
               </div>
 
               {/* Row 3: Notes (full width) */}
-              <div className="col-span-3 min-h-0">
+              <div className="col-span-1 md:col-span-2 xl:col-span-3">
                 <StretchCard>
                   <CardLabel>Notes</CardLabel>
                   <p className="text-lg text-slate-400 leading-relaxed italic">
@@ -694,11 +694,11 @@ export default function TriagePage() {
 
           {/* Edit mode */}
           {result && editing && (
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden p-6">
               <div className="max-w-3xl mx-auto space-y-4">
                 <Card>
                   <CardLabel>Demographics</CardLabel>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     <EditField label="First Name" value={form.first_name ?? ""} onChange={(v) => setForm((f) => ({ ...f, first_name: v }))} missing={result.missing_fields.includes("first_name")} />
                     <EditField label="Last Name" value={form.last_name ?? ""} onChange={(v) => setForm((f) => ({ ...f, last_name: v }))} missing={result.missing_fields.includes("last_name")} />
                     <EditField label="Age" value={form.age?.toString() ?? ""} onChange={(v) => setForm((f) => ({ ...f, age: Number(v) || undefined }))} />
@@ -729,7 +729,7 @@ export default function TriagePage() {
 
                 <Card>
                   <CardLabel>Vitals</CardLabel>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     <EditField label="Heart Rate" value={form.vitals?.heart_rate?.toString() ?? ""} onChange={(v) => setForm((f) => ({ ...f, vitals: { ...f.vitals, heart_rate: Number(v) || undefined } }))} />
                     <EditField label="SpO2" value={form.vitals?.spo2?.toString() ?? ""} onChange={(v) => setForm((f) => ({ ...f, vitals: { ...f.vitals, spo2: Number(v) || undefined } }))} />
                     <EditField label="Respiratory Rate" value={form.vitals?.respiratory_rate?.toString() ?? ""} onChange={(v) => setForm((f) => ({ ...f, vitals: { ...f.vitals, respiratory_rate: Number(v) || undefined } }))} />
@@ -746,7 +746,7 @@ export default function TriagePage() {
 
       {/* ── BOTTOM BAR ── */}
       {result && (
-        <div className="border-t border-slate-800/60 px-8 py-4 flex items-center justify-between bg-slate-900/60">
+        <div className="border-t border-slate-800/60 px-4 sm:px-8 py-4 flex flex-wrap items-center justify-between gap-3 bg-slate-900/60">
           <button
             onClick={() => setEditing(!editing)}
             className="text-base font-semibold uppercase tracking-[0.1em] px-6 py-3 rounded-xl border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 hover:bg-slate-800/50 transition-all cursor-pointer"
@@ -849,7 +849,7 @@ function DataRow({
   missing?: boolean;
 }) {
   return (
-    <div className={span2 ? "col-span-2" : ""}>
+    <div className={span2 ? "col-span-1 sm:col-span-2" : ""}>
       <div className={`text-sm font-medium uppercase tracking-[0.15em] mb-1.5 ${missing ? "text-amber-400" : "text-slate-500"}`}>
         {label}{missing && " *"}
       </div>
