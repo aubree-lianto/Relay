@@ -66,6 +66,48 @@ interface TriageResponse {
   validation_warnings: string[];
 }
 
+/** Normalize backend response: ctas→triage_level, demographics→flat, pulse_rate→heart_rate */
+function normalizeTriageResponse(raw: Record<string, unknown>): TriageResponse {
+  const pr = (raw.patient_record || {}) as Record<string, unknown>;
+  const demo = (pr.demographics || {}) as Record<string, unknown>;
+  const vitals = (pr.vitals || {}) as Record<string, unknown>;
+  return {
+    patient_record: {
+      first_name: (pr.first_name ?? demo.first_name) as string | undefined,
+      last_name: (pr.last_name ?? demo.last_name) as string | undefined,
+      age: (pr.age ?? demo.age) as number | undefined,
+      sex: (pr.sex ?? demo.sex) as string | undefined,
+      weight_kg: pr.weight_kg as number | undefined,
+      chief_complaint: pr.chief_complaint as string | undefined,
+      incident_history: pr.incident_history as string | undefined,
+      symptoms: pr.symptoms as string[] | undefined,
+      allergies: pr.allergies as string | undefined,
+      medications: Array.isArray(pr.medications)
+        ? (pr.medications as string[])
+        : typeof pr.medications === "string"
+          ? pr.medications.split(",").map((s) => s.trim()).filter(Boolean)
+          : undefined,
+      relevant_past_history: pr.relevant_past_history as string[] | undefined,
+      vitals: {
+        heart_rate: (vitals.heart_rate ?? vitals.pulse_rate) as number | undefined,
+        spo2: vitals.spo2 as number | undefined,
+        blood_pressure_systolic: (vitals.blood_pressure_systolic ?? vitals.bp_systolic) as number | undefined,
+        blood_pressure_diastolic: (vitals.blood_pressure_diastolic ?? vitals.bp_diastolic) as number | undefined,
+        respiratory_rate: (vitals.respiratory_rate ?? vitals.resp_rate) as number | undefined,
+      },
+      estimated_arrival_minutes: pr.estimated_arrival_minutes as number | undefined,
+      triage_level: (raw.triage_level ?? raw.ctas) as number,
+      notes: (pr.notes ?? pr.remarks) as string | undefined,
+      gcs: pr.gcs as number | undefined,
+      pain_scale: pr.pain_scale as number | undefined,
+    },
+    triage_level: (raw.triage_level ?? raw.ctas) as number,
+    triage_reasoning: (raw.triage_reasoning ?? raw.ctas_reasoning) as string,
+    missing_fields: (raw.missing_fields || []) as string[],
+    validation_warnings: (raw.validation_warnings || []) as string[],
+  };
+}
+
 // ── Mock data ────────────────────────────────────────────────────────────────
 
 const MOCK_RESPONSE: TriageResponse = {
@@ -306,7 +348,9 @@ export default function TriagePage() {
         body: JSON.stringify({ transcript: text }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: TriageResponse = await res.json();
+          const raw = await res.json();
+      // Normalize: backend uses ctas/triage_level, demographics nested, vitals with pulse_rate or heart_rate
+      const data = normalizeTriageResponse(raw);
       setResult(data);
       setStatus("done");
     } catch {
@@ -332,7 +376,7 @@ export default function TriagePage() {
           {triage && result ? (
             <div className={`rounded-2xl p-5 ${triage.bg} ${triage.glow} transition-all`}>
               <div className={`text-sm font-medium uppercase tracking-[0.2em] opacity-80 ${triage.text}`}>
-                ESI Level
+                CTAS Level
               </div>
               <div className="flex items-baseline gap-3">
                 <div className={`text-6xl font-black leading-none mt-1 ${triage.text}`}>
@@ -346,7 +390,7 @@ export default function TriagePage() {
           ) : (
             <div className="rounded-2xl p-5 border border-slate-800 bg-slate-900/60">
               <div className="text-sm font-medium uppercase tracking-[0.2em] text-slate-600">
-                ESI Level
+                CTAS Level
               </div>
               <div className="flex items-baseline gap-3">
                 <div className="text-6xl font-black leading-none mt-1 text-slate-800">—</div>
@@ -600,7 +644,7 @@ export default function TriagePage() {
                 </h2>
                 {triage && (
                   <span className={`px-4 py-1.5 rounded-full text-base font-bold ${triage.bg} ${triage.text}`}>
-                    ESI {result.triage_level}
+                    CTAS {result.triage_level}
                   </span>
                 )}
               </div>

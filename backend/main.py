@@ -8,7 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from schemas import TriageProcessRequest, TriageProcessResponse
 from agent import run_triage, extract_response
-from tools import PATIENT_STORE
+from store import list_patients
+from memory import get_similar_cases, store_triage_case
 
 app = FastAPI()
 
@@ -21,14 +22,25 @@ app.add_middleware(
 
 
 def generate_vitals():
-    """Generate vitals matching Ontario ACR Clinical Treatment table columns."""
+    """Generate vitals matching Ontario ACR. Includes both Ontario and frontend-friendly field names."""
+    pulse = random.randint(60, 110)
+    resp = random.randint(12, 25)
+    bp_sys = random.randint(110, 160)
+    bp_dia = random.randint(70, 100)
+    spo2 = round(random.uniform(92, 100), 1)
+    temp = round(random.uniform(36.5, 37.5), 1)
     return {
-        "pulse_rate": random.randint(60, 110),
-        "resp_rate": random.randint(12, 25),
-        "bp_systolic": random.randint(110, 160),
-        "bp_diastolic": random.randint(70, 100),
-        "spo2": round(random.uniform(92, 100), 1),
-        "temp": round(random.uniform(36.5, 37.5), 1),
+        "pulse_rate": pulse,
+        "resp_rate": resp,
+        "bp_systolic": bp_sys,
+        "bp_diastolic": bp_dia,
+        "spo2": spo2,
+        "temp": temp,
+        # Frontend aliases (AmbulanceMap, triage page)
+        "heart_rate": pulse,
+        "respiratory_rate": resp,
+        "blood_pressure_systolic": bp_sys,
+        "blood_pressure_diastolic": bp_dia,
     }
 
 
@@ -48,16 +60,39 @@ async def vitals_stream(websocket: WebSocket):
 def triage_process(request: TriageProcessRequest):
     """Process a paramedic voice transcript and return structured patient data with triage level."""
     try:
-        state = run_triage(request.transcript)
+        # Retrieve similar past cases from Moorcheh semantic memory
+        similar_cases = get_similar_cases(request.transcript, top_k=3)
+
+        state = run_triage(request.transcript, similar_cases=similar_cases)
         messages = state.get("messages", [])
         result = extract_response(messages)
 
         patient_record = result["patient_record"]
+        ctas = result["ctas"]
+        problem_code = result.get("problem_code")
+
+        # Store in Moorcheh semantic memory for future retrieval
+        pr = patient_record.model_dump() if hasattr(patient_record, "model_dump") else patient_record
+        demo = pr.get("demographics") or {}
+        vitals = pr.get("vitals") or {}
+        vitals_str = ", ".join(
+            f"{k}={v}" for k, v in vitals.items() if v is not None
+        ) or "not recorded"
+        store_triage_case(
+            patient_id=pr.get("id", ""),
+            transcript=request.transcript,
+            chief_complaint=pr.get("chief_complaint"),
+            ctas=ctas,
+            problem_code=problem_code,
+            vitals_summary=vitals_str,
+            remarks=pr.get("remarks"),
+        )
+
         return TriageProcessResponse(
             patient_record=patient_record,
-            ctas=result["ctas"],
+            ctas=ctas,
             ctas_reasoning=result["ctas_reasoning"],
-            problem_code=result.get("problem_code"),
+            problem_code=problem_code,
             missing_fields=result["missing_fields"],
             validation_warnings=result["validation_warnings"],
         )
@@ -66,6 +101,6 @@ def triage_process(request: TriageProcessRequest):
 
 
 @app.get("/patients")
-def list_patients():
+def get_patients():
     """List all patient records stored by the triage agent."""
-    return {"patients": list(PATIENT_STORE.values())}
+    return {"patients": list_patients()}

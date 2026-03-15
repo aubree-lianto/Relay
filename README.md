@@ -103,6 +103,20 @@ Wearable Integration (optional)
 - Apple Watch
 - HealthKit
 
+## Semantic Memory (Moorcheh)
+
+The triage agent uses [Moorcheh](https://moorcheh.ai/) for agentic semantic memory:
+
+- **Store**: Each completed triage case (transcript, chief complaint, CTAS, vitals) is stored in Moorcheh
+- **Retrieve**: Before processing a new transcript, similar past cases are retrieved to inform triage decisions
+- **Graceful fallback**: Works without `MOORCHEH_API_KEY`; memory features are skipped when unset
+
+Set `MOORCHEH_API_KEY` in `.env` to enable. Free tier at [console.moorcheh.ai](https://console.moorcheh.ai/).
+
+## Persistent Storage
+
+Patient records are stored in SQLite (`backend/triage.db`) and persist across restarts.
+
 ## Future Improvements
 
 - Direct integration with ambulance medical monitors

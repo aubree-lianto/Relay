@@ -19,9 +19,7 @@ from schemas import (
     TranscriptParseResult,
     Vitals,
 )
-
-# In-memory patient store (shared with agent / main)
-PATIENT_STORE: dict[str, dict[str, Any]] = {}
+from store import upsert_patient
 
 # Parser LLM (lazy init)
 _parser_llm = None
@@ -225,7 +223,7 @@ def update_patient_record(patient_record_json: str) -> str:
         data = json.loads(patient_record_json)
         patient_id = data.get("id") or str(uuid.uuid4())
         data["id"] = patient_id
-        PATIENT_STORE[patient_id] = data
+        upsert_patient(patient_id, data)
         return json.dumps({"status": "ok", "patient_id": patient_id})
     except Exception as e:
         return json.dumps({"status": "error", "error": str(e)})

@@ -7,7 +7,7 @@ Ministry of Health and Long-Term Care - Form 1881-45 (2017/01)
 
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 
 # --- Vitals (Clinical Treatment/Procedures table) ---
@@ -17,6 +17,7 @@ class Vitals(BaseModel):
     """
     Vital signs - Ontario ACR Clinical Treatment/Procedures columns.
     Pulse Rate, Resp. Rate, B/P Sys/Dia, Temp, SpO2, EtCO2
+    Includes frontend aliases (heart_rate, blood_pressure_systolic, etc.)
     """
 
     pulse_rate: Optional[int] = Field(
@@ -47,6 +48,27 @@ class Vitals(BaseModel):
         None,
         description="EtCO2 (mmHg) if available.",
     )
+
+    # Frontend aliases for triage page / AmbulanceMap
+    @computed_field
+    @property
+    def heart_rate(self) -> Optional[int]:
+        return self.pulse_rate
+
+    @computed_field
+    @property
+    def respiratory_rate(self) -> Optional[int]:
+        return self.resp_rate
+
+    @computed_field
+    @property
+    def blood_pressure_systolic(self) -> Optional[int]:
+        return self.bp_systolic
+
+    @computed_field
+    @property
+    def blood_pressure_diastolic(self) -> Optional[int]:
+        return self.bp_diastolic
 
 
 # --- CTAS (Canadian Triage and Acuity Scale) ---
@@ -243,7 +265,8 @@ class TriageProcessRequest(BaseModel):
 
 
 class TriageProcessResponse(BaseModel):
-    """Response from the triage process endpoint."""
+    """Response from the triage process endpoint.
+    Includes both Ontario ACR naming (ctas) and frontend aliases (triage_level)."""
 
     patient_record: PatientRecord
     ctas: int = Field(..., description="CTAS level 1-5 (0=Obviously Dead)")
@@ -251,3 +274,15 @@ class TriageProcessResponse(BaseModel):
     problem_code: Optional[str] = Field(None, description="Ontario ACR Problem Code")
     missing_fields: list[str] = Field(default_factory=list)
     validation_warnings: list[str] = Field(default_factory=list)
+
+    @computed_field
+    @property
+    def triage_level(self) -> int:
+        """Frontend alias for ctas."""
+        return self.ctas
+
+    @computed_field
+    @property
+    def triage_reasoning(self) -> str:
+        """Frontend alias for ctas_reasoning."""
+        return self.ctas_reasoning

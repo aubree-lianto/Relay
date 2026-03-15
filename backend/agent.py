@@ -33,9 +33,9 @@ llm = ChatOpenAI(
 ).bind_tools(TRIAGE_TOOLS)
 
 
-# --- System prompt ---
+# --- System prompt (base) ---
 
-SYSTEM_PROMPT = """You are a paramedic triage assistant for Ontario. You receive voice transcripts and produce patient records aligned with the Ontario Ambulance Call Report (ACR).
+SYSTEM_PROMPT_BASE = """You are a paramedic triage assistant for Ontario. You receive voice transcripts and produce patient records aligned with the Ontario Ambulance Call Report (ACR).
 
 Your workflow:
 1. Use parse_transcript(transcript) to extract structured patient data from the raw voice input.
@@ -65,7 +65,7 @@ Pass tool arguments as JSON strings. After all steps, summarize the Ontario ACR 
 def llm_node(state: MessagesState) -> dict:
     """Invoke the LLM with messages."""
     messages = state["messages"]
-    response = llm.invoke([SystemMessage(content=SYSTEM_PROMPT)] + list(messages))
+    response = llm.invoke([SystemMessage(content=SYSTEM_PROMPT_BASE)] + list(messages))
     return {"messages": [response]}
 
 
@@ -97,9 +97,19 @@ agent = graph_builder.compile()
 # --- Invoke helper ---
 
 
-def run_triage(transcript: str, config: RunnableConfig | None = None) -> dict:
-    """Run the triage agent on a transcript. Returns the final state."""
-    messages = [HumanMessage(content=f"Process this paramedic transcript:\n\n{transcript}")]
+def run_triage(
+    transcript: str,
+    config: RunnableConfig | None = None,
+    similar_cases: list[str] | None = None,
+) -> dict:
+    """Run the triage agent on a transcript. Returns the final state.
+    Optionally include similar_cases from semantic memory for context."""
+    content = f"Process this paramedic transcript:\n\n{transcript}"
+    if similar_cases:
+        content += "\n\n## Similar past cases (for reference):\n"
+        for i, case in enumerate(similar_cases[:3], 1):
+            content += f"\n--- Past case {i} ---\n{case}\n"
+    messages = [HumanMessage(content=content)]
     return agent.invoke({"messages": messages}, config=config or {})
 
 
