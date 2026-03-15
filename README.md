@@ -111,6 +111,10 @@ Wearable Integration (optional)
 - Electronic Health Record (EHR) integration
 - ECG waveform streaming
 
+## Demo Video
+
+[![Watch the demo](https://img.youtube.com/vi/fkZe0OzjOks/maxresdefault.jpg)](https://youtu.be/fkZe0OzjOks)
+
 ## Demo Flow
 
 1. Paramedic speaks patient information into Alexa.
