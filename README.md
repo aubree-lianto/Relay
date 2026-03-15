@@ -117,6 +117,34 @@ Set `MOORCHEH_API_KEY` in `.env` to enable. Free tier at [console.moorcheh.ai](h
 
 Patient records are stored in SQLite (`backend/triage.db`) and persist across restarts.
 
+## Viewing on your phone (ngrok)
+
+To use the app on your phone while the backend and frontend run on your machine:
+
+1. **Start backend and frontend** (in two terminals):
+   ```bash
+   cd backend && uvicorn main:app --reload --host 0.0.0.0
+   cd frontend && npm run dev
+   ```
+
+2. **Expose both with ngrok** (two terminals, or [ngrok config](https://ngrok.com/docs/guides/run-multiple-tunnels/) for multiple ports):
+   ```bash
+   ngrok http 8000   # backend
+   ngrok http 3000   # frontend
+   ```
+
+3. **Point the frontend at the backend’s public URL**  
+   In `frontend/.env.local` (create from `frontend/.env.example`):
+   ```env
+   NEXT_PUBLIC_API_URL=https://YOUR-BACKEND-NGROK-URL.ngrok-free.app
+   ```
+   Use the **https** URL ngrok gave you for port 8000 (no trailing slash).
+
+4. **Restart the Next.js dev server** so it picks up the env var.
+
+5. **On your phone**, open the **frontend** ngrok URL (the one for port 3000).  
+   The app will call the backend via the URL you set in step 3.
+
 ## Future Improvements
 
 - Direct integration with ambulance medical monitors

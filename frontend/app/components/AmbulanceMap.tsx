@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import { WS_BASE } from "../config";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -173,7 +174,7 @@ export default function AmbulanceMap() {
 
   // WebSocket vitals
   useEffect(() => {
-    const ws = new WebSocket("ws://localhost:8000/ws/vitals");
+    const ws = new WebSocket(`${WS_BASE}/ws/vitals`);
     ws.onmessage = (e) => {
       const data: Vitals = JSON.parse(e.data);
       baseVitalsRef.current = data;

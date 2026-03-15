@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { API_BASE_URL, WS_BASE } from "../config";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -190,6 +191,14 @@ const TRIAGE_LEVELS: Record<
 
 // ── Component ────────────────────────────────────────────────────────────────
 
+/** Stream event from backend SSE */
+interface StreamEvent {
+  type: "progress" | "done" | "error";
+  step?: string;
+  message?: string;
+  result?: Record<string, unknown>;
+}
+
 export default function TriagePage() {
   const [status, setStatus] = useState<
     "idle" | "listening" | "processing" | "done"
@@ -199,6 +208,8 @@ export default function TriagePage() {
   const [result, setResult] = useState<TriageResponse | null>(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<PatientRecord>({});
+  const [streamingSteps, setStreamingSteps] = useState<string[]>([]);
+  const [streamingError, setStreamingError] = useState<string | null>(null);
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const committedRef = useRef("");
@@ -223,7 +234,7 @@ export default function TriagePage() {
   ];
 
   useEffect(() => {
-    const ws = new WebSocket("ws://localhost:8000/ws/vitals");
+    const ws = new WebSocket(`${WS_BASE}/ws/vitals`);
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
       liveHRRef.current = data.pulse_rate ?? 75;
@@ -324,6 +335,8 @@ export default function TriagePage() {
     setLiveTranscript("");
     setResult(null);
     setEditing(false);
+    setStreamingSteps([]);
+    setStreamingError(null);
     setStatus("listening");
     const rec = buildRecognition();
     if (!rec) return;
@@ -341,20 +354,63 @@ export default function TriagePage() {
       return;
     }
     setStatus("processing");
+    setStreamingSteps([]);
+    setStreamingError(null);
     try {
-      const res = await fetch("http://localhost:8000/triage/process", {
+      const res = await fetch(`${API_BASE_URL}/triage/process/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transcript: text }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const raw = await res.json();
-      // Normalize: backend uses ctas/triage_level, demographics nested, vitals with pulse_rate or heart_rate
-      const data = normalizeTriageResponse(raw);
-      setResult(data);
+      if (!res.body) throw new Error("No response body");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const blocks = buffer.split("\n\n");
+        buffer = blocks.pop() ?? "";
+        for (const block of blocks) {
+          const dataLine = block.split("\n").find((l) => l.startsWith("data: "));
+          if (!dataLine) continue;
+          try {
+            const event: StreamEvent = JSON.parse(dataLine.slice(6));
+            if (event.type === "progress" && event.message) {
+              setStreamingSteps((prev) => [...prev, event.message]);
+            } else if (event.type === "done" && event.result) {
+              const data = normalizeTriageResponse(event.result);
+              setResult(data);
+              setStatus("done");
+              return;
+            } else if (event.type === "error" && event.message) {
+              setStreamingError(event.message);
+              setStatus("done");
+              return;
+            }
+          } catch {
+            // ignore parse errors for partial chunks
+          }
+        }
+      }
+      // stream ended without "done" – fallback to non-stream endpoint
+      const fallback = await fetch(`${API_BASE_URL}/triage/process`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: text }),
+      });
+      if (fallback.ok) {
+        const raw = await fallback.json();
+        setResult(normalizeTriageResponse(raw));
+      } else {
+        setResult(MOCK_RESPONSE);
+      }
       setStatus("done");
     } catch {
       setResult(MOCK_RESPONSE);
+      setStreamingError("Connection failed — showing demo data");
       setStatus("done");
     }
   }, []);
@@ -415,6 +471,38 @@ export default function TriagePage() {
               <div className="text-4xl font-black text-slate-800">—</div>
             )}
           </div>
+
+          {/* Streaming progress (visible while processing) */}
+          {status === "processing" && (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-950/20 p-5">
+              <div className="text-sm font-medium uppercase tracking-[0.2em] text-amber-400 mb-3">
+                Triage progress
+              </div>
+              <div className="space-y-2">
+                {streamingSteps.length === 0 ? (
+                  <p className="text-amber-300/80 text-sm animate-pulse">Starting…</p>
+                ) : (
+                  streamingSteps.map((msg, i) => (
+                    <div
+                      key={i}
+                      className={`flex items-center gap-2 text-sm ${
+                        i === streamingSteps.length - 1
+                          ? "text-amber-300 font-medium"
+                          : "text-slate-500"
+                      }`}
+                    >
+                      {i === streamingSteps.length - 1 ? (
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                      ) : (
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-600" />
+                      )}
+                      {msg}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Live EKG strip */}
           <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
@@ -613,10 +701,21 @@ export default function TriagePage() {
                   </p>
                 </div>
               ) : status === "processing" ? (
-                <div className="text-center">
-                  <div className="text-amber-400 text-lg font-medium tracking-[0.15em] animate-pulse">
-                    ANALYZING TRANSCRIPT...
+                <div className="w-full max-w-2xl mx-auto rounded-2xl border border-slate-800 bg-slate-900/40 p-8">
+                  <div className="text-sm font-semibold uppercase tracking-[0.2em] text-amber-400 mb-4 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                    Processing triage
                   </div>
+                  {streamingSteps.length > 0 ? (
+                    <p className="text-xl text-slate-200 leading-relaxed">
+                      {streamingSteps[streamingSteps.length - 1]}…
+                    </p>
+                  ) : (
+                    <p className="text-xl text-slate-400 italic">Starting…</p>
+                  )}
+                  {streamingError && (
+                    <p className="mt-4 text-red-400 text-sm">{streamingError}</p>
+                  )}
                 </div>
               ) : (
                 <div className="text-center">
@@ -797,6 +896,8 @@ export default function TriagePage() {
                 setResult(null);
                 setForm({});
                 setLiveTranscript("");
+                setStreamingSteps([]);
+                setStreamingError(null);
                 setStatus("idle");
                 setEditing(false);
               }}

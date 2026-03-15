@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { WS_BASE } from "./config";
 
 const AmbulanceMap = dynamic(() => import("./components/AmbulanceMap"), {
   ssr: false,
@@ -75,7 +76,7 @@ export default function Home() {
   });
 
   useEffect(() => {
-    const ws = new WebSocket("ws://localhost:8000/ws/vitals");
+    const ws = new WebSocket(`${WS_BASE}/ws/vitals`);
     ws.onopen = () => setConnected(true);
     ws.onclose = () => setConnected(false);
     ws.onmessage = (event) => {

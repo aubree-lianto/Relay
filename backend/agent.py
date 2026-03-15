@@ -2,7 +2,7 @@
 
 import json
 import os
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, Any, AsyncIterator, Literal, TypedDict
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -201,4 +201,115 @@ def extract_response(messages: list) -> dict:
         "problem_code": problem_code,
         "missing_fields": missing_fields,
         "validation_warnings": validation_warnings,
+    }
+
+
+def _infer_step_label(tool_output: str) -> str:
+    """Infer a human-readable step label from a tool's JSON output."""
+    try:
+        data = json.loads(tool_output)
+        if data.get("ctas") is not None or "reasoning" in data:
+            return "Computing CTAS"
+        if data.get("missing_required") is not None or data.get("missing_preferred") is not None:
+            return "Checking missing fields"
+        if data.get("warnings") is not None:
+            return "Validating vitals"
+        if data.get("status") == "ok":
+            return "Storing record"
+        if "chief_complaint" in data or "age" in data or "last_name" in data:
+            return "Extracting patient data"
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return "Processing"
+
+
+async def stream_triage_events(
+    transcript: str,
+    similar_cases: list[str] | None = None,
+    config: RunnableConfig | None = None,
+) -> AsyncIterator[dict[str, Any]]:
+    """Stream triage progress events as the agent runs. Yields SSE-ready dicts."""
+    content = f"Process this paramedic transcript:\n\n{transcript}"
+    if similar_cases:
+        content += "\n\n## Similar past cases (for reference):\n"
+        for i, case in enumerate(similar_cases[:3], 1):
+            content += f"\n--- Past case {i} ---\n{case}\n"
+    messages = [HumanMessage(content=content)]
+    config = config or {}
+
+    last_state: dict | None = None
+    try:
+        if similar_cases:
+            yield {"type": "progress", "step": "start", "message": "Retrieving similar cases"}
+        yield {"type": "progress", "step": "start", "message": "Analyzing transcript"}
+
+        async for chunk in agent.astream(
+            {"messages": messages},
+            config,
+            stream_mode=["updates", "values"],
+            version="v2",
+        ):
+            if chunk.get("type") == "values":
+                last_state = chunk.get("data")
+                continue
+            if chunk.get("type") != "updates":
+                continue
+            data = chunk.get("data") or {}
+            for node_name, state_update in data.items():
+                if node_name == "llm":
+                    yield {"type": "progress", "step": "llm", "message": "Analyzing"}
+                elif node_name == "tools":
+                    new_msgs = (state_update or {}).get("messages") or []
+                    label = "Processing"
+                    for m in new_msgs:
+                        if isinstance(m, ToolMessage):
+                            label = _infer_step_label(m.content)
+                            break
+                    yield {"type": "progress", "step": "tools", "message": label}
+    except Exception as e:
+        yield {"type": "error", "message": str(e)}
+        return
+
+    if not last_state or "messages" not in last_state:
+        yield {"type": "error", "message": "No final state from agent"}
+        return
+
+    result = extract_response(last_state["messages"])
+    patient_record = result["patient_record"]
+    pr = patient_record.model_dump() if hasattr(patient_record, "model_dump") else patient_record
+    demo = pr.get("demographics") or {}
+    vitals = pr.get("vitals") or {}
+    vitals_str = ", ".join(
+        f"{k}={v}" for k, v in vitals.items() if v is not None
+    ) or "not recorded"
+
+    # Store in semantic memory (import here to avoid circular deps)
+    try:
+        from memory import store_triage_case
+        store_triage_case(
+            patient_id=pr.get("id", ""),
+            transcript=transcript,
+            chief_complaint=pr.get("chief_complaint"),
+            ctas=result["ctas"],
+            problem_code=result.get("problem_code"),
+            vitals_summary=vitals_str,
+            remarks=pr.get("remarks"),
+        )
+    except Exception:
+        pass
+
+    # Serialize for JSON (Pydantic model -> dict)
+    pr_ser = pr
+    if hasattr(patient_record, "model_dump"):
+        pr_ser = patient_record.model_dump(mode="json")
+    yield {
+        "type": "done",
+        "result": {
+            "patient_record": pr_ser,
+            "ctas": result["ctas"],
+            "ctas_reasoning": result["ctas_reasoning"],
+            "problem_code": result.get("problem_code"),
+            "missing_fields": result["missing_fields"],
+            "validation_warnings": result["validation_warnings"],
+        },
     }

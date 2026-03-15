@@ -1,13 +1,15 @@
 import asyncio
+import json
 import random
 from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from schemas import TriageProcessRequest, TriageProcessResponse
-from agent import run_triage, extract_response
+from agent import run_triage, extract_response, stream_triage_events
 from store import list_patients
 from memory import get_similar_cases, store_triage_case
 
@@ -98,6 +100,30 @@ def triage_process(request: TriageProcessRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/triage/process/stream")
+async def triage_process_stream(request: TriageProcessRequest):
+    """Stream triage progress via Server-Sent Events. POST with { transcript } and read the response as SSE."""
+    async def event_stream():
+        similar_cases = await asyncio.to_thread(
+            get_similar_cases, request.transcript, 3
+        )
+        async for event in stream_triage_events(
+            request.transcript,
+            similar_cases=similar_cases,
+        ):
+            yield f"data: {json.dumps(event, default=str)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.get("/patients")

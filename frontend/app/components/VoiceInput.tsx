@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { API_BASE_URL } from "../config";
 
 // ── Browser type shims (Web Speech API is not in lib.dom.d.ts by default) ──
 interface SpeechRecognitionEvent extends Event {
@@ -184,7 +185,7 @@ export default function VoiceInput({ onResult }: VoiceInputProps = {}) {
 
     setStatus("processing");
     try {
-      const res = await fetch("http://localhost:8000/triage/process", {
+      const res = await fetch(`${API_BASE_URL}/triage/process`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transcript: text }),
